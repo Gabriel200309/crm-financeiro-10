@@ -1,0 +1,2501 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM Financeiro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<!-- Firebase (mesma stack do DFLINE CRM, usado como referência de arquitetura) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+// PREENCHA com as credenciais do SEU projeto Firebase (Firestore).
+// Console Firebase > Configurações do projeto > Seus apps > SDK setup.
+// Sem isso preenchido, o app roda em modo "offline" (só demonstração, nada é salvo).
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyCOPDSkMVwxir2z6tHUFSaqgoZlYGo4fLk",
+  authDomain: "df-crm-14fac.firebaseapp.com",
+  projectId: "df-crm-14fac",
+  storageBucket: "df-crm-14fac.firebasestorage.app",
+  messagingSenderId: "226593640098",
+  appId: "1:226593640098:web:65e0270982948622ce11fb",
+  measurementId: "G-CF890RXQ7D"
+};
+let firebaseOk = true;
+// Enquanto firebaseConfig ainda tiver os valores de exemplo, nem tenta
+// conectar — cai direto no modo local (localStorage), pra dar pra
+// testar o sistema inteiro antes de configurar o Firebase de verdade.
+const configPreenchido = Object.values(firebaseConfig).every(v => v && !String(v).includes('COLE_AQUI'));
+let db = null, auth = null, authSecundario = null;
+if (!configPreenchido) {
+  firebaseOk = false;
+} else {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    auth = firebase.auth();
+    authSecundario = firebase.initializeApp(firebaseConfig, "secundario").auth();
+  } catch (e) {
+    // Antes essa falha ficava muda — se algo aqui desse errado (ex.: SDK
+    // de Auth não carregou), a tela caía silenciosamente pro aviso de
+    // "Firebase não configurado", que é enganoso quando o problema é
+    // outro. Agora mostra o motivo de verdade no console do navegador.
+    console.error('Falha ao inicializar o Firebase:', e);
+    firebaseOk = false;
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ===================================================================
+   Identidade visual reaproveitada do DFLINE CRM (item 12 do pedido):
+   mesma paleta, sidebar, topbar, cards, kanban, modal, badges, forms.
+   =================================================================== */
+:root{--green:#1a9e4a;--green-h:#147d3a;--green-bg:#e6f5ec;--sb:#1a2332;--sbh:#243044;--sba:#2d3d55;--top:#fff;--body:#f4f5f7;--card:#fff;--bdr:#e1e4e8;--t1:#1a2332;--t2:#6b7280;--tl:#9ca3af;--red:#e53e3e;--redl:#fed7d7;--orange:#ed8936;--orangel:#feebc8;--blue:#3182ce;--blue-bg:#eff6ff;--bluel:#bee3f8;--purple:#805ad5;--r:6px;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--body);color:var(--t1);height:100vh;overflow:hidden}
+.app{display:flex;height:100vh}
+/* SIDEBAR */
+.sidebar{width:56px;background:var(--sb);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px;z-index:100;flex-shrink:0;transition:width .2s;overflow:hidden}
+.sidebar:hover{width:220px}
+.s-logo{width:36px;height:36px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;flex-shrink:0;margin-bottom:16px}
+.s-item{width:calc(100% - 8px);padding:10px 12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:10px;color:#8fa3bc;transition:all .15s;white-space:nowrap;overflow:hidden;border:none;background:none;text-align:left;font-family:inherit;font-size:16px}
+.s-item:hover{background:var(--sbh);color:#fff}.s-item.active{background:var(--sba);color:#fff}
+.s-lbl{font-size:13px;font-weight:500;opacity:0;transition:opacity .15s}
+.sidebar:hover .s-lbl{opacity:1}
+.s-div{width:32px;height:1px;background:var(--sba);margin:8px 0}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+/* TOPBAR */
+.topbar{background:#fff;border-bottom:1px solid var(--bdr);padding:0 20px;height:52px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.tb-title{font-size:17px;font-weight:600}
+.tb-search{flex:1;max-width:360px;position:relative;margin:0 16px}
+.tb-search input{width:100%;padding:7px 12px;border:1px solid var(--bdr);border-radius:20px;font-size:13px;background:var(--body);outline:none;font-family:inherit}
+.tb-search input:focus{border-color:var(--green);background:#fff}
+/* BUTTONS */
+.btn{padding:7px 14px;border-radius:var(--r);border:none;cursor:pointer;font-size:13px;font-weight:500;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:all .15s}
+.btn-g{background:var(--green);color:#fff}.btn-g:hover{background:var(--green-h)}
+.btn-s{background:#fff;color:var(--t1);border:1px solid var(--bdr)}.btn-s:hover{background:var(--body)}
+.btn-d{background:var(--red);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px}.btn-xs{padding:3px 8px;font-size:11px}
+.av{border-radius:50%;color:#fff;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+/* TOOLBAR */
+.toolbar{background:#fff;border-bottom:1px solid var(--bdr);padding:8px 20px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.tsep{width:1px;height:20px;background:var(--bdr);margin:0 4px}
+.fsel{padding:5px 10px;border:1px solid var(--bdr);border-radius:var(--r);font-size:12px;font-family:inherit;background:#fff;cursor:pointer;outline:none}
+/* KANBAN */
+.kw{flex:1;overflow-x:auto;overflow-y:hidden;padding:16px;display:flex;gap:10px;user-select:none}
+.kcol{width:250px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+.chdr{background:#fff;border:1px solid var(--bdr);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
+.ctitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.ccount{background:var(--body);color:var(--t2);font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px}
+.cval{font-size:11px;color:var(--t2);margin-top:2px}
+.clist{display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:calc(100vh - 210px);padding-bottom:4px;min-height:40px;transition:background .15s;border-radius:var(--r)}
+.clist::-webkit-scrollbar{width:3px}.clist::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:3px}
+.clist.drag-over{background:var(--green-bg)}
+/* CARD */
+.kcard{background:#fff;border:1px solid var(--bdr);border-radius:var(--r);padding:10px 12px;cursor:grab;transition:all .15s;position:relative}
+.kcard:hover{border-color:var(--green);box-shadow:0 2px 10px rgba(0,0,0,.09);transform:translateY(-1px)}
+.kcard.dragging{opacity:.45;transform:rotate(2deg);cursor:grabbing}
+.kcard.ov{border-left:3px solid var(--red)}
+.kn{font-size:13px;font-weight:600;margin-bottom:4px;color:var(--t1)}
+.kmeta{font-size:11px;color:var(--t2);margin-bottom:3px}
+.kval{font-size:14px;font-weight:700;color:var(--green);margin-bottom:4px}
+.ktags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.tag{padding:2px 7px;border-radius:10px;font-size:10px;font-weight:500}
+.ktask{margin-top:5px;padding:4px 8px;background:var(--body);border-radius:4px;font-size:11px;color:var(--t2)}
+.ktask.ot{background:var(--redl);color:var(--red);font-weight:600}
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:#fff;border-radius:8px;width:100%;max-width:760px;max-height:92vh;box-shadow:0 20px 60px rgba(0,0,0,.22);display:flex;flex-direction:column}
+.mhdr{padding:18px 24px 14px;border-bottom:1px solid var(--bdr);display:flex;align-items:flex-start;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:1}
+.mtitle{font-size:15px;font-weight:700}
+.mclose{background:none;border:none;cursor:pointer;color:var(--t2);font-size:22px;padding:0;line-height:1;margin-left:12px;flex-shrink:0}
+.mbody{padding:18px 24px;overflow-y:auto;flex:1;min-height:0}
+.mfooter{padding:14px 24px;border-top:1px solid var(--bdr);display:flex;justify-content:flex-end;gap:10px}
+.tabs{display:flex;border-bottom:1px solid var(--bdr);padding:0 24px;overflow-x:auto}
+.tab{padding:10px 16px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;color:var(--t2);white-space:nowrap;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
+.tab.active{border-bottom-color:var(--green);color:var(--green)}
+/* FORM */
+.fg{margin-bottom:13px}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fl{display:block;font-size:12px;font-weight:500;color:var(--t2);margin-bottom:4px}
+.fi{width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:var(--r);font-size:13px;font-family:inherit;outline:none}
+.fi:focus{border-color:var(--green)}
+.fs{width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:var(--r);font-size:13px;font-family:inherit;outline:none;background:#fff;cursor:pointer}
+.fsec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);padding:10px 0 7px;border-bottom:1px solid var(--bdr);margin-bottom:11px}
+textarea.fi{resize:vertical;min-height:70px}
+/* TASKS/HIST */
+.tlist{display:flex;flex-direction:column;gap:6px}
+.titem{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--body);border-radius:var(--r);font-size:12px}
+.titem.ov2{background:var(--redl)}
+.tcheck{width:17px;height:17px;border-radius:50%;border:2px solid var(--bdr);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px}
+.tcheck.done{background:var(--green);border-color:var(--green);color:#fff}
+.note-item{padding:10px 12px;background:var(--body);border-radius:var(--r);font-size:13px;color:var(--t1);border-left:3px solid var(--green);margin-bottom:6px}
+.note-meta{font-size:11px;color:var(--tl);margin-top:4px}
+/* BADGES */
+.badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
+.b-g{background:var(--green-bg);color:var(--green)}.b-r{background:var(--redl);color:var(--red)}
+.b-b{background:var(--bluel);color:var(--blue)}.b-o{background:var(--orangel);color:var(--orange)}.b-p{background:#e9d8fd;color:var(--purple)}
+/* DASHBOARD */
+.dash{flex:1;overflow-y:auto;padding:20px}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:#fff;border:1px solid var(--bdr);border-radius:var(--r);padding:15px}
+.kpi-l{font-size:11px;color:var(--t2);font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.kpi-v{font-size:22px;font-weight:700}.kpi-s{font-size:11px;color:var(--tl);margin-top:3px}
+.kpi.g{border-top:3px solid var(--green)}.kpi.b{border-top:3px solid var(--blue)}.kpi.o{border-top:3px solid var(--orange)}.kpi.r{border-top:3px solid var(--red)}.kpi.p{border-top:3px solid var(--purple)}
+.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.cc{background:#fff;border:1px solid var(--bdr);border-radius:var(--r);padding:15px}
+.ct{font-size:13px;font-weight:600;margin-bottom:12px}
+.bar-chart{display:flex;align-items:flex-end;gap:8px;height:110px}
+.bg{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.bar{width:100%;border-radius:4px 4px 0 0;min-height:2px}
+.blbl{font-size:10px;color:var(--tl);text-align:center}
+.bval{font-size:10px;font-weight:600;color:var(--t2)}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-bottom:1px solid var(--bdr);text-align:left;background:var(--body)}
+.tbl td{padding:9px 12px;font-size:13px;border-bottom:1px solid var(--bdr)}
+.tbl tr:hover td{background:var(--body)}
+/* LOGIN */
+.lpage{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--body)}
+.lcard{background:#fff;border-radius:10px;padding:40px;width:390px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+/* SETTINGS / GENERIC PAGE */
+.spage{flex:1;overflow-y:auto;padding:20px}
+.scard{background:#fff;border:1px solid var(--bdr);border-radius:var(--r);padding:18px;margin-bottom:14px}
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--t1);color:#fff;padding:12px 20px;border-radius:var(--r);font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.empty{text-align:center;padding:18px 8px;color:var(--tl);font-size:12px}
+/* MANUAL */
+.man-wrap{flex:1;display:flex;overflow:hidden}
+.man-toc{width:220px;flex-shrink:0;border-right:1px solid var(--bdr);padding:16px 8px;overflow-y:auto;background:#fff}
+.man-toc a{display:block;padding:7px 12px;border-radius:6px;font-size:13px;color:var(--t2);text-decoration:none;cursor:pointer;margin-bottom:2px}
+.man-toc a:hover{background:var(--body);color:var(--t1)}
+.man-toc a.ativo{background:var(--green-bg);color:var(--green);font-weight:600}
+.man-content{flex:1;overflow-y:auto;padding:28px 32px;max-width:760px}
+.man-content h2{font-size:19px;font-weight:700;margin:0 0 6px;color:var(--t1);scroll-margin-top:20px}
+.man-content h3{font-size:14px;font-weight:700;margin:22px 0 8px;color:var(--t1)}
+.man-content p{font-size:13.5px;line-height:1.7;color:var(--t2);margin-bottom:10px}
+.man-content ul,.man-content ol{margin:0 0 12px 20px;font-size:13.5px;line-height:1.8;color:var(--t2)}
+.man-content li{margin-bottom:3px}
+.man-content .man-sub{font-size:12px;color:var(--tl);margin-bottom:18px}
+.man-step{background:var(--body);border-radius:8px;padding:12px 16px;margin-bottom:10px;border-left:3px solid var(--green)}
+.man-step b{color:var(--t1)}
+.man-tip{background:var(--blue-bg);border-radius:8px;padding:10px 14px;font-size:12.5px;color:#1e4d7b;margin-bottom:12px}
+.man-warn{background:var(--redl);border-radius:8px;padding:10px 14px;font-size:12.5px;color:#9b2c2c;margin-bottom:12px}
+.man-kbd{background:var(--body);border:1px solid var(--bdr);border-radius:4px;padding:1px 6px;font-family:'JetBrains Mono',monospace;font-size:11.5px}
+.man-sec{margin-bottom:36px;padding-bottom:8px;border-bottom:1px solid var(--bdr)}
+.man-sec:last-child{border-bottom:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+/* ===================================================================
+   CONSTANTES DO FUNIL (seções 4, 9, 10 do pedido) — nada fica fixo no
+   código sem poder ser mudado depois: os responsáveis por etapa e as
+   carteiras vêm de Configurações (Firestore), só a ORDEM/OFFSET do
+   funil e as descrições das tarefas automáticas ficam aqui porque
+   definem a regra de negócio em si.
+   =================================================================== */
+const ETAPAS = [
+  { key:'D_MENOS_7', label:'D-7', curto:'D-7', offset:-7, desc:'Comunicação preventiva.' },
+  { key:'D_MENOS_1', label:'D-1', curto:'D-1', offset:-1, desc:'Cobrança preventiva.' },
+  { key:'D0', label:'D0 (vencimento)', curto:'D0', offset:0, desc:'Dia do vencimento.' },
+  { key:'D_MAIS_1', label:'D+1', curto:'D+1', offset:1, desc:'Primeira cobrança após vencimento.' },
+  { key:'D_MAIS_7', label:'D+7', curto:'D+7', offset:7, desc:'Acompanhamento da inadimplência.' },
+  { key:'D_MAIS_10', label:'D+10 — Suspensão do suporte', curto:'D+10', offset:10, desc:'Comunicação de suspensão do suporte.' },
+  { key:'D_MAIS_15', label:'D+15 — Suspensão das demandas', curto:'D+15', offset:15, desc:'Comunicação de suspensão das demandas.' },
+  { key:'D_MAIS_20', label:'D+20 — Início da rescisão', curto:'D+20', offset:20, desc:'Início do processo de rescisão.' },
+  { key:'RESCISAO', label:'Rescisão', curto:'Rescisão', offset:null, desc:'Cliente em processo de rescisão.' },
+  { key:'NOTIFICACAO', label:'Notificação extrajudicial', curto:'Notificação', offset:null, desc:'Notificação extrajudicial.' },
+  { key:'JURIDICO', label:'Jurídico', curto:'Jurídico', offset:null, desc:'Cliente encaminhado ao jurídico.' },
+  { key:'REGULARIZADO', label:'Regularizado', curto:'Regularizado', offset:null, desc:null },
+];
+const ETAPA_LABEL = Object.fromEntries(ETAPAS.map(e=>[e.key,e.label]));
+const ETAPA_CURTO = Object.fromEntries(ETAPAS.map(e=>[e.key,e.curto]));
+const ETAPA_OFFSET = Object.fromEntries(ETAPAS.filter(e=>e.offset!==null).map(e=>[e.key,e.offset]));
+const TAREFA_DESC = Object.fromEntries(ETAPAS.filter(e=>e.desc).map(e=>[e.key,e.desc]));
+const ORDEM_FUNIL = ETAPAS.filter(e=>e.key!=='REGULARIZADO').map(e=>e.key);
+const RESPONSAVEIS_PADRAO = { D_MENOS_7:'Duda', D_MENOS_1:'Larissa', D0:'Larissa', D_MAIS_1:'Larissa', D_MAIS_7:'Duda', D_MAIS_10:'Duda', D_MAIS_15:'Duda', D_MAIS_20:'Duda', RESCISAO:'Duda', NOTIFICACAO:'Duda', JURIDICO:'Duda' };
+const CARTEIRAS_PADRAO = ['Celeste','Êxitos','Delta'];
+const PERFIS = { ADMINISTRADOR:'Administrador', FINANCEIRO:'Financeiro', OPERACIONAL:'Responsável operacional', VISUALIZACAO:'Visualização (somente leitura)' };
+const PERIODICIDADES = { MENSAL:{label:'Mensal',meses:1}, BIMESTRAL:{label:'Bimestral',meses:2}, TRIMESTRAL:{label:'Trimestral',meses:3}, SEMESTRAL:{label:'Semestral',meses:6}, ANUAL:{label:'Anual',meses:12} };
+
+/* ===================================================================
+   UTILITÁRIOS DE DATA/DINHEIRO (item 10: tudo calculado dinamicamente,
+   nunca data fixa) e persistência local (fallback sem Firebase).
+   =================================================================== */
+function hojeSemHora(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+function toDate(v){ if(!v) return null; if(v.toDate) return v.toDate(); const d=new Date(v); d.setHours(0,0,0,0); return d; }
+function addDays(date, n){ const d=new Date(date); d.setDate(d.getDate()+n); return d; }
+// addMonths robusto contra "virada de mês": sem isso, 31/out - 1 mês
+// vira 01/nov em vez de 30/set, porque o JS estoura o dia quando o mês
+// de destino tem menos dias (setembro só tem 30).
+function addMonths(date, n){
+  const d = new Date(date);
+  const dia = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + n);
+  const ultimoDiaDoMesDestino = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  d.setDate(Math.min(dia, ultimoDiaDoMesDestino));
+  return d;
+}
+function diffDays(de, ate){ return Math.round((toDate(ate) - toDate(de)) / 86400000); }
+function fmtDate(v){ const d=toDate(v); return d ? d.toLocaleDateString('pt-BR') : '—'; }
+function toInputDate(v){ const d=toDate(v); if(!d) return ''; const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+function fmtMoney(v){ return (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function parseMoney(v){ if(typeof v==='number') return v; const s=String(v||'0').replace(/[^\d,.-]/g,'').replace(/\.(?=\d{3},)/g,'').replace(',', '.'); return parseFloat(s)||0; }
+function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
+function competenciaDe(data){ const d=toDate(data)||hojeSemHora(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+// Parser de CSV robusto pra importação em massa (item 9/18 do pedido):
+// detecta automaticamente vírgula ou ponto-e-vírgula como separador
+// (exportações brasileiras — Excel, Asaas — geralmente usam ; porque a
+// vírgula já é o separador decimal) e entende campos entre aspas.
+function parseCsv(texto){
+  const linhas = texto.replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim().length > 0);
+  if (linhas.length === 0) return { headers: [], linhasDados: [] };
+  const amostra = linhas[0];
+  const delimitador = (amostra.match(/;/g) || []).length > (amostra.match(/,/g) || []).length ? ';' : ',';
+  function parseLinha(linha){
+    const campos = [];
+    let atual = '';
+    let dentroAspas = false;
+    for (let i = 0; i < linha.length; i++) {
+      const ch = linha[i];
+      if (ch === '"') {
+        if (dentroAspas && linha[i+1] === '"') { atual += '"'; i++; }
+        else dentroAspas = !dentroAspas;
+      } else if (ch === delimitador && !dentroAspas) {
+        campos.push(atual.trim()); atual = '';
+      } else {
+        atual += ch;
+      }
+    }
+    campos.push(atual.trim());
+    return campos;
+  }
+  const headers = parseLinha(linhas[0]);
+  const linhasDados = linhas.slice(1).map(parseLinha);
+  return { headers, linhasDados, delimitador };
+}
+// Tenta adivinhar qual coluna do CSV corresponde a cada campo do
+// sistema, pelo nome do cabeçalho — só um ponto de partida, o usuário
+// confirma/ajusta no mapeamento antes de importar.
+function adivinharMapeamento(headers){
+  const normaliza = h => h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  const candidatos = {
+    codigo: ['codigo','código','id','codigo_cliente','id_cliente'],
+    nome: ['nome','cliente','razao social','razaosocial','nome_cliente'],
+    carteira: ['carteira','equipe','time','grupo'],
+    valor: ['valor','mensalidade','preco','preço','valor_mensalidade'],
+    vencimento: ['vencimento','dia_vencimento','diavencimento','dia'],
+  };
+  const mapeamento = { codigo:'', nome:'', carteira:'', valor:'', vencimento:'' };
+  const headersNorm = headers.map(normaliza);
+  for (const campo of Object.keys(candidatos)) {
+    const idx = headersNorm.findIndex(h => candidatos[campo].includes(h));
+    if (idx >= 0) mapeamento[campo] = headers[idx];
+  }
+  return mapeamento;
+}
+
+/* ===================================================================
+   CAMADA DE DADOS — Firestore (item 23/24 do pedido: coleções
+   separadas por entidade, nunca tudo num documento só, e sincronização
+   em tempo real via onSnapshot). Se o Firebase não estiver configurado,
+   cai num modo local (localStorage) só para dar pra ver a interface —
+   deixo isso bem sinalizado na tela de login.
+   =================================================================== */
+const LOCAL_KEY = 'crm_financeiro_local_v1';
+function localDB(){
+  try { return JSON.parse(localStorage.getItem(LOCAL_KEY)) || {}; } catch(e){ return {}; }
+}
+function saveLocalDB(db){ localStorage.setItem(LOCAL_KEY, JSON.stringify(db)); }
+
+// Hook genérico de coleção: tempo real quando há Firebase, senão lê do
+// localStorage (sem realtime, mas funcional para teste).
+function useCollection(nome){
+  const [dados, setDados] = useState([]);
+  useEffect(() => {
+    if (firebaseOk && db) {
+      const unsub = db.collection(nome).onSnapshot(snap => {
+        setDados(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }, err => console.error('onSnapshot', nome, err));
+      return unsub;
+    }
+    const ler = () => setDados((localDB()[nome]) || []);
+    ler();
+    window.addEventListener('local-db-changed', ler);
+    return () => window.removeEventListener('local-db-changed', ler);
+  }, [nome]);
+  return dados;
+}
+
+async function criarDoc(nome, dado){
+  if (firebaseOk && db) {
+    const ref = await db.collection(nome).add(dado);
+    return ref.id;
+  }
+  const all = localDB();
+  const id = uid();
+  all[nome] = all[nome] || [];
+  all[nome].push({ id, ...dado });
+  saveLocalDB(all);
+  window.dispatchEvent(new Event('local-db-changed'));
+  return id;
+}
+async function atualizarDoc(nome, id, patch){
+  if (firebaseOk && db) {
+    await db.collection(nome).doc(id).set(patch, { merge: true });
+    return;
+  }
+  const all = localDB();
+  all[nome] = (all[nome] || []).map(d => d.id === id ? { ...d, ...patch } : d);
+  saveLocalDB(all);
+  window.dispatchEvent(new Event('local-db-changed'));
+}
+// Config geral (responsaveis/carteiras) é um doc único, não uma
+// coleção — helper dedicado pra funcionar igual nos dois modos.
+async function salvarConfig(patch){
+  if (firebaseOk && db) {
+    await db.collection('config').doc('geral').set(patch, { merge: true });
+    return;
+  }
+  const all = localDB();
+  all.configGeral = { ...(all.configGeral||{}), ...patch };
+  saveLocalDB(all);
+  window.dispatchEvent(new Event('local-db-changed'));
+}
+async function excluirDoc(nome, id){
+  if (firebaseOk && db) { await db.collection(nome).doc(id).delete(); return; }
+  const all = localDB();
+  all[nome] = (all[nome] || []).filter(d => d.id !== id);
+  saveLocalDB(all);
+  window.dispatchEvent(new Event('local-db-changed'));
+}
+
+
+/* ===================================================================
+   REGRAS DO FUNIL (itens 4-11 e 21 do pedido).
+   =================================================================== */
+// Cobrança de referência: a mais antiga ainda não paga. Clientes cuja
+// única pendência é honorário de êxito nunca entram no funil de
+// inadimplência de mensalidade (item 21).
+function cobrancaReferencia(cliente, cobrancas){
+  const doCliente = cobrancas.filter(c => c.clienteId === cliente.id && !c.dataPagamento);
+  if (doCliente.length === 0) return null;
+  return doCliente.reduce((antiga, atual) => toDate(atual.vencimento) < toDate(antiga.vencimento) ? atual : antiga);
+}
+function statusCobranca(cobranca, hoje){
+  if (!cobranca) return null;
+  if (cobranca.dataPagamento) return { status:'PAGA', diasAtraso:0 };
+  const dias = diffDays(cobranca.vencimento, hoje);
+  return { status: dias > 0 ? 'ATRASADA' : 'PENDENTE', diasAtraso: Math.max(0, dias) };
+}
+// Tag automática de atraso (item 6/9): "Em atraso" até 29 dias, depois "Inadimplente".
+function tagAutomatica(diasAtraso){
+  if (!diasAtraso || diasAtraso <= 0) return null;
+  return diasAtraso < 30 ? 'Em atraso' : 'Inadimplente';
+}
+
+/* -------------------------------------------------------------------
+   PROGRESSÃO AUTOMÁTICA DO FUNIL (item 4 da ata da reunião — prioridade
+   1: "o sistema deverá controlar automaticamente a evolução do
+   cliente conforme os dias de atraso"). A etapa é CALCULADA a partir
+   da data de vencimento a cada carregamento — não depende de alguém
+   arrastar o card. D-7→D-1→D0→D+1→D+7→D+10→D+15→D+20→Rescisão
+   acontece sozinho. Só passa a ser manual (Notificação/Jurídico/
+   Regularizado) quando alguém explicitamente assume o card — aí o
+   campo `travaManual` passa a valer e a automação para de mexer nele.
+   ------------------------------------------------------------------- */
+function etapaAutomaticaPorData(vencimento, hoje){
+  const dias = diffDays(vencimento, hoje); // positivo = dias já vencidos
+  if (dias < -7) return null;        // mais de 7 dias pro vencimento: fora do funil (em dia)
+  if (dias < -1) return 'D_MENOS_7';
+  if (dias < 0) return 'D_MENOS_1';
+  if (dias === 0) return 'D0';
+  if (dias < 7) return 'D_MAIS_1';
+  if (dias < 10) return 'D_MAIS_7';
+  if (dias < 15) return 'D_MAIS_10';
+  if (dias < 20) return 'D_MAIS_15';
+  if (dias === 20) return 'D_MAIS_20';
+  return 'RESCISAO'; // regra da reunião: ao completar D+20, rescisão é automática
+}
+// Próxima etapa/prazo a partir da etapa atual — cálculo sempre
+// dinâmico a partir do vencimento da cobrança de referência.
+function proximaAcao(etapaAtual, vencimentoRef, hoje){
+  const idx = etapaAtual ? ORDEM_FUNIL.indexOf(etapaAtual) : -1;
+  const proxima = ORDEM_FUNIL[idx+1];
+  if (!proxima || !(proxima in ETAPA_OFFSET)) return { proxima:null, data:null, atrasada:false, dias:0 };
+  const data = addDays(vencimentoRef, ETAPA_OFFSET[proxima]);
+  const dias = diffDays(data, hoje);
+  return { proxima, data, atrasada: dias > 0, dias: Math.max(0, dias) };
+}
+// Monta a visão consolidada de cada cliente pro Kanban/lista/dashboard.
+function montarVisaoCliente(cliente, cobrancas, tarefas, responsaveis, hoje){
+  const referencia = cobrancaReferencia(cliente, cobrancas);
+  const etapaAuto = referencia ? etapaAutomaticaPorData(referencia.vencimento, hoje) : null;
+  const etapaEfetiva = referencia
+    ? (cliente.travaManual ? (cliente.etapaAtual || etapaAuto) : etapaAuto)
+    : (cliente.etapaAtual ? 'REGULARIZADO' : null);
+  const statusRef = statusCobranca(referencia, hoje);
+  const prox = referencia ? proximaAcao(etapaEfetiva, referencia.vencimento, hoje) : { proxima:null, data:null, atrasada:false, dias:0 };
+  const tarefasCliente = tarefas.filter(t => t.clienteId === cliente.id);
+  const tarefasAtrasadas = tarefasCliente.filter(t => t.status === 'PENDENTE' && diffDays(t.prazo, hoje) > 0);
+  return {
+    ...cliente,
+    referencia,
+    etapaEfetiva,
+    diasAtraso: statusRef ? statusRef.diasAtraso : 0,
+    tagAuto: statusRef ? tagAutomatica(statusRef.diasAtraso) : null,
+    responsavelEtapa: etapaEfetiva ? (responsaveis[etapaEfetiva] || 'A definir') : null,
+    proximaEtapa: prox.proxima,
+    proximaData: prox.data,
+    proximaAtrasada: prox.atrasada,
+    proximaDias: prox.dias,
+    tarefas: tarefasCliente,
+    tarefasAtrasadas,
+  };
+}
+
+// Move o cliente de etapa (usado pelo drag-and-drop e pela seleção manual
+// no modal). Isso LIGA a trava manual — a partir daqui a automação para
+// de mexer nesse cliente, até alguém clicar em "Devolver ao automático".
+// Grava histórico (nunca apagado, item 3) e cria a tarefa automática da
+// nova etapa (item 8), com prazo calculado a partir da cobrança de
+// referência e responsável de Configurações.
+async function moverEtapaCliente(cliente, cobrancas, novaEtapaBruta, responsaveis, usuario){
+  const novaEtapa = (!novaEtapaBruta || novaEtapaBruta === 'REGULARIZADO') ? null : novaEtapaBruta;
+  await atualizarDoc('clientes', cliente.id, { etapaAtual: novaEtapa, travaManual: true });
+  await criarDoc('historico', {
+    clienteId: cliente.id, data: new Date().toISOString(), usuario,
+    texto: `Movido manualmente para ${novaEtapa ? ETAPA_LABEL[novaEtapa] : 'Em dia / Regularizado'}.`, etapa: novaEtapa,
+  });
+  if (novaEtapa && novaEtapa !== 'REGULARIZADO' && TAREFA_DESC[novaEtapa]) {
+    const referencia = cobrancaReferencia(cliente, cobrancas);
+    const offset = ETA_OFF_OR_ZERO(novaEtapa);
+    const prazo = referencia ? addDays(referencia.vencimento, offset) : new Date();
+    await criarDoc('tarefas', {
+      clienteId: cliente.id, descricao: TAREFA_DESC[novaEtapa], responsavel: responsaveis[novaEtapa] || 'A definir',
+      prazo: prazo.toISOString(), prioridade: 'MEDIA', status: 'PENDENTE', etapaOrigem: novaEtapa,
+      automatica: true, criadoPor: usuario, criadoEm: new Date().toISOString(),
+    });
+  }
+}
+// Devolve o cliente pro piloto automático (destrava).
+async function destravarAutomatico(cliente, usuario){
+  await atualizarDoc('clientes', cliente.id, { travaManual: false });
+  await criarDoc('historico', { clienteId: cliente.id, data: new Date().toISOString(), usuario, texto: 'Devolvido ao fluxo automático (D-7 a D+20 calculado por data).', etapa: null });
+}
+function ETA_OFF_OR_ZERO(etapa){ return etapa in ETAPA_OFFSET ? ETAPA_OFFSET[etapa] : 0; }
+
+// Roda a cada carregamento (e sob demanda): para clientes SEM trava
+// manual, sincroniza etapaAtual com a etapa calculada pela data e — só
+// quando a etapa realmente muda — grava histórico + tarefa automática
+// da nova etapa (mesma regra do moverEtapaCliente, sem travar).
+// Roda a cada carregamento (e sob demanda): para clientes SEM trava
+// manual, sincroniza etapaAtual com a etapa calculada pela data e — só
+// quando a etapa realmente muda — grava histórico + tarefa automática
+// da nova etapa (mesma regra do moverEtapaCliente, sem travar).
+//
+// BUG CORRIGIDO: quando o cliente pagava e ficava sem nenhuma cobrança
+// aberta, essa função zerava etapaAtual (etapaCalculada=null) — e como
+// "Regularizado" só aparece quando etapaAtual continua preenchido (é
+// esse valor que sinaliza "já esteve no funil"), o cliente sumia da
+// tela inteira em vez de aparecer em Regularizados. Agora, sem cobrança
+// aberta, a função nem mexe no cliente — ele fica marcado como estava,
+// e a tela já mostra "Regularizado" sozinha (referência paga + etapa
+// antiga preenchida) sem precisar apagar nada.
+async function sincronizarEtapasAutomaticas(clientes, cobrancas, tarefas, responsaveis, hoje){
+  let avancos = 0;
+  for (const cliente of clientes) {
+    if (cliente.tipoCobranca === 'EXITO' || cliente.ativo === false || cliente.travaManual) continue;
+    const referencia = cobrancaReferencia(cliente, cobrancas);
+    if (!referencia) continue; // pagou tudo — nada a avançar; a tela já mostra Regularizado sozinha
+    const etapaCalculada = etapaAutomaticaPorData(referencia.vencimento, hoje);
+    if (etapaCalculada === (cliente.etapaAtual || null)) continue;
+    const diasRef = diffDays(referencia.vencimento, hoje);
+    const rotuloDias = diasRef>=0 ? ` (D+${diasRef})` : ` (D${diasRef})`;
+    await atualizarDoc('clientes', cliente.id, { etapaAtual: etapaCalculada });
+    await criarDoc('historico', {
+      clienteId: cliente.id, data: hoje.toISOString(), usuario: 'sistema (automático)',
+      texto: `Avançou automaticamente para ${etapaCalculada ? ETAPA_LABEL[etapaCalculada] : 'Em dia'}${rotuloDias}.`,
+      etapa: etapaCalculada,
+    });
+    if (etapaCalculada && TAREFA_DESC[etapaCalculada]) {
+      const jaTem = tarefas.some(t => t.clienteId === cliente.id && t.etapaOrigem === etapaCalculada && t.automatica);
+      if (!jaTem) {
+        const prazo = addDays(referencia.vencimento, ETA_OFF_OR_ZERO(etapaCalculada));
+        await criarDoc('tarefas', {
+          clienteId: cliente.id, descricao: TAREFA_DESC[etapaCalculada], responsavel: responsaveis[etapaCalculada] || 'A definir',
+          prazo: prazo.toISOString(), prioridade: 'MEDIA', status: 'PENDENTE', etapaOrigem: etapaCalculada,
+          automatica: true, criadoPor: 'sistema (automático)', criadoEm: hoje.toISOString(),
+        });
+      }
+    }
+    avancos++;
+  }
+  return avancos;
+}
+
+/* ===================================================================
+   COBRANÇA RECORRENTE (item 20) — gera as cobranças em aberto a partir
+   da configuração do cliente, respeitando periodicidade, data
+   inicial/final e quantidade de parcelas. Sem servidor/cron, isso roda
+   quando o usuário abre o Dashboard ou clica em "Gerar cobranças
+   pendentes" — por isso é importante abrir o app periodicamente, ou
+   plugar isso num Cloud Function se quiser 100% automático depois.
+   =================================================================== */
+async function gerarCobrancasRecorrentes(clientes, cobrancasExistentes, usuario){
+  const hoje = hojeSemHora();
+  let geradas = 0;
+  for (const c of clientes) {
+    // item 7 da ata: "quando o cliente sair da base, a cobrança
+    // recorrente deverá ser encerrada" — cliente inativo nunca gera cobrança nova.
+    if (c.ativo === false) continue;
+    const r = c.cobrancaRecorrente;
+    if (!r || !r.ativo || !r.valor || !r.diaVencimento) continue;
+    if (r.dataInicial && toDate(r.dataInicial) > hoje) continue;
+    if (r.dataFinal && toDate(r.dataFinal) < hoje) continue;
+
+    const jaGeradas = cobrancasExistentes.filter(cb => cb.clienteId === c.id && cb.geradaAutomaticamente);
+    if (r.quantidadeParcelas && jaGeradas.length >= Number(r.quantidadeParcelas)) continue;
+
+    const intervaloMeses = (PERIODICIDADES[r.periodicidade] || PERIODICIDADES.MENSAL).meses;
+    const referenciaData = r.dataInicial ? toDate(r.dataInicial) : toDate(c.createdAt) || hoje;
+    // Gera a competência atual se estiver no ciclo certo e ainda não existir.
+    const mesesDesde = (hoje.getFullYear() - referenciaData.getFullYear()) * 12 + (hoje.getMonth() - referenciaData.getMonth());
+    if (mesesDesde < 0 || mesesDesde % intervaloMeses !== 0) continue;
+
+    const competencia = competenciaDe(hoje);
+    const existeNaCompetencia = cobrancasExistentes.some(cb => cb.clienteId === c.id && cb.competencia === competencia);
+    if (existeNaCompetencia) continue;
+
+    const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
+    const dia = Math.min(Number(r.diaVencimento), ultimoDia);
+    const vencimento = new Date(hoje.getFullYear(), hoje.getMonth(), dia);
+
+    await criarDoc('cobrancas', {
+      clienteId: c.id, valor: Number(r.valor), competencia, vencimento: vencimento.toISOString(),
+      dataPagamento: null, geradaAutomaticamente: true, formaPagamento: r.formaPagamento || null,
+      criadoEm: new Date().toISOString(), criadoPor: usuario || 'automacao',
+    });
+    geradas++;
+  }
+  return geradas;
+}
+
+/* ===================================================================
+   PERMISSÕES (item 22) — 4 perfis, expansível depois.
+   =================================================================== */
+function podeEditar(usuario){ return usuario && ['ADMINISTRADOR','FINANCEIRO'].includes(usuario.perfil); }
+function podeVerTudo(usuario){ return usuario && usuario.perfil !== 'OPERACIONAL'; }
+function ehAdmin(usuario){ return usuario && usuario.perfil === 'ADMINISTRADOR'; }
+
+/* ===================================================================
+   COMPONENTES GENÉRICOS
+   =================================================================== */
+function Toast({ mensagem }){
+  if (!mensagem) return null;
+  return <div className="toast">{mensagem}</div>;
+}
+
+function Modal({ titulo, onClose, children, footer, wide }){
+  return (
+    <div className="overlay" onMouseDown={(e)=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal" style={wide?{maxWidth:920}:undefined}>
+        <div className="mhdr">
+          <div className="mtitle">{titulo}</div>
+          <button className="mclose" onClick={onClose}>×</button>
+        </div>
+        {children}
+        {footer && <div className="mfooter">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ nome, cor }){
+  const inicial = (nome||'?').trim().charAt(0).toUpperCase();
+  return <div className="av" style={{width:30,height:30,fontSize:13,background: cor || '#607d8b'}}>{inicial}</div>;
+}
+
+const CORES_AVATAR = ['#1a9e4a','#3182ce','#805ad5','#ed8936','#e53e3e','#0d9488','#c026d3'];
+function corPara(texto){
+  let h = 0;
+  for (let i=0;i<(texto||'').length;i++) h = (h*31 + texto.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(h)];
+}
+
+/* ===================================================================
+   DADOS DE EXEMPLO — só usado em modo local (sem Firebase
+   configurado), pra dar pra testar o sistema inteiro sem precisar
+   configurar nada antes.
+   =================================================================== */
+async function semearDadosExemplo(){
+  await salvarConfig({ responsaveis: RESPONSAVEIS_PADRAO, carteiras: CARTEIRAS_PADRAO });
+  const hoje = hojeSemHora();
+  // diasAtraso: positivo = já venceu há N dias; negativo = vence daqui a N dias.
+  // A etapa mostrada é sempre calculada por essa data (item 4 da ata) —
+  // só marco travaManual:true nas etapas que não têm regra automática
+  // (Jurídico, Regularizado), pra elas não voltarem sozinhas pro fluxo.
+  const clientesExemplo = [
+    { codigo:'1001', nome:'Studio Aurora Design', carteira:'Celeste', diasAtraso:-20 },                          // em dia
+    { codigo:'1002', nome:'Construtora Horizonte', carteira:'Celeste', diasAtraso:-1 },                          // D-1
+    { codigo:'1003', nome:'Padaria Trigo Dourado', carteira:'Êxitos', diasAtraso:0 },                            // D0
+    { codigo:'1004', nome:'Consultório Dr. Almeida', carteira:'Êxitos', diasAtraso:1 },                          // D+1
+    { codigo:'1005', nome:'Auto Peças Veloz', carteira:'Delta', diasAtraso:7 },                                  // D+7
+    { codigo:'1006', nome:'Mercado Bom Preço', carteira:'Delta', diasAtraso:10 },                                // D+10
+    { codigo:'1007', nome:'Academia Impacto Fitness', carteira:'Celeste', diasAtraso:20 },                       // D+20
+    { codigo:'1008', nome:'Salão Beleza Rara', carteira:'Êxitos', diasAtraso:45, etapaManual:'JURIDICO' },        // jurídico (manual)
+    { codigo:'1009', nome:'Livraria Página Viva', carteira:'Delta', diasAtraso:-15, pagoNoPassado:true, etapaManual:'D_MAIS_7' }, // regularizado
+    { codigo:'1010', nome:'Escritório Jurídico Nobre', carteira:'Êxitos', diasAtraso:5, tipoCobranca:'EXITO' },   // só honorário de êxito, fora do funil (item 6)
+  ];
+  for (const c of clientesExemplo) {
+    const etapaInicial = c.etapaManual || null;
+    const clienteId = await criarDoc('clientes', {
+      codigo: c.codigo, nome: c.nome, carteira: c.carteira, tipoCobranca: c.tipoCobranca || 'MENSALIDADE',
+      etapaAtual: etapaInicial, travaManual: !!c.etapaManual, ativo: true, observacoes: '', createdAt: new Date().toISOString(),
+      cobrancaRecorrente: { ativo:true, valor: 800 + Math.round(Math.random()*1200), diaVencimento: 10, periodicidade:'MENSAL', dataInicial: addMonths(hoje,-3).toISOString() },
+    });
+    const vencimento = addDays(hoje, -c.diasAtraso);
+    await criarDoc('cobrancas', {
+      clienteId, valor: 800 + Math.round(Math.random()*1200), competencia: competenciaDe(vencimento),
+      vencimento: vencimento.toISOString(), dataPagamento: c.pagoNoPassado ? addDays(vencimento, 2).toISOString() : null,
+      criadoEm: new Date().toISOString(), criadoPor: 'exemplo',
+    });
+    const vencimentoAnterior = addMonths(vencimento, -1);
+    await criarDoc('cobrancas', {
+      clienteId, valor: 800 + Math.round(Math.random()*1200), competencia: competenciaDe(vencimentoAnterior),
+      vencimento: vencimentoAnterior.toISOString(), dataPagamento: addDays(vencimentoAnterior, 3).toISOString(),
+      criadoEm: new Date().toISOString(), criadoPor: 'exemplo',
+    });
+    const etapaParaHistorico = etapaInicial || etapaAutomaticaPorData(vencimento, hoje);
+    if (etapaParaHistorico) {
+      await criarDoc('tarefas', {
+        clienteId, descricao: TAREFA_DESC[etapaParaHistorico] || 'Acompanhar cliente.', responsavel: RESPONSAVEIS_PADRAO[etapaParaHistorico] || 'Duda',
+        prazo: vencimento.toISOString(), prioridade:'MEDIA', status:'PENDENTE', etapaOrigem: etapaParaHistorico,
+        automatica:true, criadoPor:'exemplo', criadoEm:new Date().toISOString(),
+      });
+      await criarDoc('historico', { clienteId, data:new Date().toISOString(), usuario:'exemplo', texto:`Movido para ${ETAPA_LABEL[etapaParaHistorico]}.`, etapa:etapaParaHistorico });
+    }
+  }
+}
+
+/* ===================================================================
+   LOGIN — sem senha (uso interno), escolhe o usuário cadastrado em
+   Configurações > Usuários. O primeiro usuário do escritório vira
+   Administrador automaticamente.
+   =================================================================== */
+function Login({ usuarios, onEntrar }){
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [criando, setCriando] = useState(usuarios.length === 0);
+  const [carregandoExemplo, setCarregandoExemplo] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [avisoReset, setAvisoReset] = useState('');
+
+  async function entrarComExemplo(){
+    setCarregandoExemplo(true);
+    await semearDadosExemplo();
+    const id = await criarDoc('usuarios', { nome: 'Você (teste)', perfil: 'ADMINISTRADOR', criadoEm: new Date().toISOString() });
+    onEntrar({ id, nome: 'Você (teste)', perfil: 'ADMINISTRADOR' });
+  }
+
+  // Modo local (sem Firebase): mantém o login simples de antes — sem
+  // senha, só escolher/criar um perfil. Não tem dado sensível de verdade
+  // guardado em lugar nenhum (é só localStorage do seu navegador).
+  async function criarPrimeiroUsuarioLocal(e){
+    e.preventDefault();
+    if (!nome.trim()) return;
+    const id = await criarDoc('usuarios', { nome: nome.trim(), perfil: 'ADMINISTRADOR', criadoEm: new Date().toISOString() });
+    onEntrar({ id, nome: nome.trim(), perfil: 'ADMINISTRADOR' });
+  }
+
+  // Modo Firebase: autenticação de verdade (e-mail/senha). O primeiro
+  // administrador é criado aqui; os demais usuários são criados em
+  // Configurações por um administrador já logado.
+  async function criarPrimeiroAdministrador(e){
+    e.preventDefault();
+    setErro(''); setEnviando(true);
+    try {
+      const cred = await auth.createUserWithEmailAndPassword(email.trim(), senha);
+      const perfil = { nome: nome.trim(), email: email.trim(), perfil: 'ADMINISTRADOR', criadoEm: new Date().toISOString() };
+      await db.collection('usuarios').doc(cred.user.uid).set(perfil);
+      // Não dá pra confiar só no onAuthStateChanged aqui: ele pode disparar
+      // antes dessa escrita do perfil terminar (é uma corrida real, não só
+      // teórica), e o App tentaria ler um perfil que ainda não existe e
+      // devolveria pro login. Por isso entra direto, com os dados que a
+      // gente já tem em mãos.
+      onEntrar({ id: cred.user.uid, ...perfil });
+    } catch (err) {
+      setErro(mensagemErroAuth(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+  async function entrarComSenha(e){
+    e.preventDefault();
+    setErro(''); setEnviando(true);
+    try {
+      await auth.signInWithEmailAndPassword(email.trim(), senha);
+    } catch (err) {
+      setErro(mensagemErroAuth(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+  async function esqueciSenha(){
+    if (!email.trim()) { setErro('Digite seu e-mail acima primeiro, depois clique em "Esqueci minha senha".'); return; }
+    setErro(''); setAvisoReset('');
+    try {
+      await auth.sendPasswordResetEmail(email.trim());
+      setAvisoReset('Enviamos um link de redefinição de senha pro seu e-mail.');
+    } catch (err) {
+      setErro(mensagemErroAuth(err));
+    }
+  }
+
+  return (
+    <div className="lpage">
+      <div className="lcard">
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:22}}>
+          <div className="s-logo" style={{marginBottom:0}}>CF</div>
+          <div>
+            <div style={{fontWeight:700,fontSize:16}}>CRM Financeiro</div>
+            <div style={{fontSize:12,color:'var(--t2)'}}>Acompanhamento de inadimplência</div>
+          </div>
+        </div>
+        {!firebaseOk && (
+          <div className="badge b-o" style={{display:'block',marginBottom:16,padding:'8px 10px'}}>
+            Firebase não configurado — rodando em modo local (só neste navegador, sem sincronização, sem senha). Edite <code>firebaseConfig</code> no topo do arquivo pra usar de verdade.
+          </div>
+        )}
+        {!firebaseOk && usuarios.length === 0 && (
+          <button className="btn btn-s" style={{width:'100%',justifyContent:'center',marginBottom:16}} onClick={entrarComExemplo} disabled={carregandoExemplo}>
+            {carregandoExemplo ? 'Carregando...' : '⚡ Entrar com dados de exemplo (pra testar)'}
+          </button>
+        )}
+
+        {!firebaseOk ? (
+          criando ? (
+            <form onSubmit={criarPrimeiroUsuarioLocal}>
+              <p style={{fontSize:13,color:'var(--t2)',marginBottom:14}}>Nenhum usuário cadastrado ainda. Crie o primeiro (vira Administrador).</p>
+              <div className="fg">
+                <label className="fl">Seu nome</label>
+                <input className="fi" autoFocus value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex.: Duda" />
+              </div>
+              <button className="btn btn-g" style={{width:'100%',justifyContent:'center'}} type="submit">Criar e entrar</button>
+            </form>
+          ) : (
+            <>
+              <p style={{fontSize:13,color:'var(--t2)',marginBottom:14}}>Quem é você?</p>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {usuarios.map(u => (
+                  <button key={u.id} className="btn btn-s" style={{justifyContent:'flex-start'}} onClick={()=>onEntrar(u)}>
+                    <Avatar nome={u.nome} cor={corPara(u.nome)} /> {u.nome}
+                    <span style={{marginLeft:'auto',fontSize:11,color:'var(--tl)'}}>{PERFIS[u.perfil]}</span>
+                  </button>
+                ))}
+              </div>
+              <button className="btn btn-s btn-sm" style={{marginTop:14}} onClick={()=>setCriando(true)}>+ Novo usuário</button>
+            </>
+          )
+        ) : usuarios.length === 0 ? (
+          <form onSubmit={criarPrimeiroAdministrador}>
+            <p style={{fontSize:13,color:'var(--t2)',marginBottom:14}}>Nenhum administrador cadastrado ainda. Crie o primeiro — os demais usuários você cadastra depois em Configurações.</p>
+            <div className="fg"><label className="fl">Seu nome</label><input className="fi" autoFocus required value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex.: Duda" /></div>
+            <div className="fg"><label className="fl">E-mail</label><input className="fi" type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="voce@empresa.com" /></div>
+            <div className="fg"><label className="fl">Senha (mínimo 6 caracteres)</label><input className="fi" type="password" required minLength={6} value={senha} onChange={e=>setSenha(e.target.value)} /></div>
+            {erro && <p style={{fontSize:12,color:'var(--red)',marginBottom:10}}>{erro}</p>}
+            <button className="btn btn-g" style={{width:'100%',justifyContent:'center'}} type="submit" disabled={enviando}>{enviando?'Criando...':'Criar administrador e entrar'}</button>
+          </form>
+        ) : (
+          <form onSubmit={entrarComSenha}>
+            <div className="fg"><label className="fl">E-mail</label><input className="fi" type="email" autoFocus required value={email} onChange={e=>setEmail(e.target.value)} /></div>
+            <div className="fg"><label className="fl">Senha</label><input className="fi" type="password" required value={senha} onChange={e=>setSenha(e.target.value)} /></div>
+            {erro && <p style={{fontSize:12,color:'var(--red)',marginBottom:10}}>{erro}</p>}
+            {avisoReset && <p style={{fontSize:12,color:'var(--green)',marginBottom:10}}>{avisoReset}</p>}
+            <button className="btn btn-g" style={{width:'100%',justifyContent:'center'}} type="submit" disabled={enviando}>{enviando?'Entrando...':'Entrar'}</button>
+            <button type="button" className="btn btn-s btn-sm" style={{width:'100%',justifyContent:'center',marginTop:10}} onClick={esqueciSenha}>Esqueci minha senha</button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+function mensagemErroAuth(err){
+  const codigo = err && err.code;
+  const mapa = {
+    'auth/invalid-email': 'E-mail inválido.',
+    'auth/user-not-found': 'Não existe usuário com esse e-mail.',
+    'auth/wrong-password': 'Senha incorreta.',
+    'auth/invalid-credential': 'E-mail ou senha incorretos.',
+    'auth/email-already-in-use': 'Já existe uma conta com esse e-mail.',
+    'auth/weak-password': 'A senha precisa ter pelo menos 6 caracteres.',
+    'auth/too-many-requests': 'Muitas tentativas seguidas — aguarde um pouco e tente de novo.',
+  };
+  return mapa[codigo] || (err && err.message) || 'Não foi possível entrar. Tente de novo.';
+}
+
+/* ===================================================================
+   SIDEBAR / TOPBAR
+   =================================================================== */
+const NAV = [
+  { key:'kanban', icone:'📋', label:'CRM (Kanban)' },
+  { key:'clientes', icone:'👥', label:'Clientes' },
+  { key:'cobrancas', icone:'💳', label:'Cobranças' },
+  { key:'tarefas', icone:'✅', label:'Tarefas' },
+  { key:'dashboard', icone:'📊', label:'Dashboard' },
+  { key:'config', icone:'⚙️', label:'Configurações' },
+  { key:'manual', icone:'📖', label:'Manual' },
+];
+function Sidebar({ view, setView, usuario, onSair }){
+  return (
+    <div className="sidebar">
+      <div className="s-logo">CF</div>
+      {NAV.map(item => (
+        (item.key !== 'config' || ehAdmin(usuario)) &&
+        <button key={item.key} className={`s-item ${view===item.key?'active':''}`} onClick={()=>setView(item.key)}>
+          <span>{item.icone}</span><span className="s-lbl">{item.label}</span>
+        </button>
+      ))}
+      <div style={{flex:1}} />
+      <div className="s-div" />
+      <button className="s-item" onClick={onSair}>
+        <span>🚪</span><span className="s-lbl">Sair</span>
+      </button>
+    </div>
+  );
+}
+function Topbar({ titulo, busca, setBusca, usuario }){
+  return (
+    <div className="topbar">
+      <div className="tb-title">{titulo}</div>
+      <div className="tb-search">
+        <input placeholder="Buscar cliente por nome ou código..." value={busca} onChange={e=>setBusca(e.target.value)} />
+      </div>
+      <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}}>
+        <Avatar nome={usuario.nome} cor={corPara(usuario.nome)} />
+        <div>
+          <div style={{fontSize:12,fontWeight:600}}>{usuario.nome}</div>
+          <div style={{fontSize:10,color:'var(--t2)'}}>{PERFIS[usuario.perfil]}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+   KANBAN (itens 4-7 e 11 do pedido)
+   =================================================================== */
+function KanbanCard({ view, arrastavel, onDragStart, onAbrir }){
+  const atrasado = view.tarefasAtrasadas.length > 0 || view.proximaAtrasada;
+  return (
+    <div
+      className={`kcard ${atrasado ? 'ov' : ''}`}
+      draggable={arrastavel}
+      onDragStart={(e)=>{ e.dataTransfer.setData('text/plain', view.id); onDragStart && onDragStart(view.id); }}
+      onClick={()=>onAbrir(view)}
+    >
+      <div className="kn">{view.nome}{view.travaManual && <span title="Etapa travada manualmente" style={{marginLeft:6,fontSize:11}}>🔒</span>}</div>
+      <div className="kmeta">{view.codigo}{view.carteira ? ` · ${view.carteira}` : ''}</div>
+      {view.referencia && <div className="kval">{fmtMoney(view.referencia.valor)}</div>}
+      {view.referencia && (
+        <div className="kmeta">vence {fmtDate(view.referencia.vencimento)}{view.diasAtraso>0?` · ${view.diasAtraso}d de atraso`:''}</div>
+      )}
+      <div className="kmeta">Responsável: {view.responsavelEtapa || '—'}</div>
+      {view.proximaEtapa && (
+        <div className={`ktask ${view.proximaAtrasada?'ot':''}`}>
+          Próxima ação: {ETAPA_CURTO[view.proximaEtapa]} {view.proximaData ? `em ${fmtDate(view.proximaData)}` : ''}
+        </div>
+      )}
+      {view.tarefasAtrasadas.length > 0 && (
+        <div className="ktask ot">⚠️ {view.tarefasAtrasadas.length} tarefa(s) atrasada(s)</div>
+      )}
+      {(view.tagAuto) && (
+        <div className="ktags">
+          <span className="tag" style={{background: view.tagAuto==='Inadimplente' ? 'var(--redl)' : 'var(--orangel)', color: view.tagAuto==='Inadimplente' ? 'var(--red)' : 'var(--orange)'}}>{view.tagAuto}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KanbanBoard({ visoes, colunas, onMover, onAbrir, arrastavel }){
+  const [colunaSobre, setColunaSobre] = useState(null);
+  return (
+    <div className="kw">
+      {colunas.map(col => {
+        const doColuna = visoes.filter(v => v.etapaEfetiva === col.key);
+        const total = doColuna.reduce((s,v)=> s + (v.referencia ? Number(v.referencia.valor) : 0), 0);
+        return (
+          <div key={col.key} className="kcol">
+            <div className="chdr">
+              <div>
+                <div className="ctitle">{col.curto}</div>
+                {total > 0 && <div className="cval">{fmtMoney(total)}</div>}
+              </div>
+              <span className="ccount">{doColuna.length}</span>
+            </div>
+            <div
+              className={`clist ${colunaSobre===col.key?'drag-over':''}`}
+              onDragOver={(e)=>{ e.preventDefault(); setColunaSobre(col.key); }}
+              onDragLeave={()=> setColunaSobre(c => c===col.key ? null : c)}
+              onDrop={(e)=>{ e.preventDefault(); setColunaSobre(null); const id = e.dataTransfer.getData('text/plain'); if (id) onMover(id, col.key); }}
+            >
+              {doColuna.map(v => (
+                <KanbanCard key={v.id} view={v} arrastavel={arrastavel} onAbrir={onAbrir} />
+              ))}
+              {doColuna.length === 0 && <div className="empty">Nenhum cliente aqui.</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FiltrosKanban({ filtros, setFiltros, carteiras, responsaveisNomes }){
+  return (
+    <div className="toolbar">
+      <select className="fsel" value={filtros.carteira} onChange={e=>setFiltros({...filtros, carteira:e.target.value})}>
+        <option value="">Todas as carteiras</option>
+        {carteiras.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <select className="fsel" value={filtros.responsavel} onChange={e=>setFiltros({...filtros, responsavel:e.target.value})}>
+        <option value="">Todos os responsáveis</option>
+        {responsaveisNomes.map(r => <option key={r} value={r}>{r}</option>)}
+      </select>
+      <select className="fsel" value={filtros.status} onChange={e=>setFiltros({...filtros, status:e.target.value})}>
+        <option value="">Todos os status</option>
+        <option value="EM_DIA">Em dia</option>
+        <option value="ATRASO">Em atraso (&lt;30d)</option>
+        <option value="INADIMPLENTE">Inadimplente (30d+)</option>
+      </select>
+      <select className="fsel" value={filtros.tarefas} onChange={e=>setFiltros({...filtros, tarefas:e.target.value})}>
+        <option value="">Todas as tarefas</option>
+        <option value="ATRASADAS">Com tarefa atrasada</option>
+      </select>
+      {(filtros.carteira || filtros.responsavel || filtros.status || filtros.tarefas) && (
+        <button className="btn btn-s btn-sm" onClick={()=>setFiltros({carteira:'',responsavel:'',status:'',tarefas:''})}>Limpar filtros</button>
+      )}
+    </div>
+  );
+}
+
+function KanbanView({ clientes, cobrancas, tarefas, config, usuario, busca, onAbrirCliente }){
+  const [filtros, setFiltros] = useState({ carteira:'', responsavel:'', status:'', tarefas:'' });
+  const [sincronizando, setSincronizando] = useState(false);
+  const [msgSync, setMsgSync] = useState('');
+  const jaSincronizouRef = useRef(false);
+  const hoje = hojeSemHora();
+  const responsaveis = config.responsaveis || RESPONSAVEIS_PADRAO;
+
+  // Item 4 da reunião: o funil D-7→D+20→Rescisão avança sozinho por
+  // data. Sincroniza assim que os clientes carregam do Firestore — e
+  // só uma vez por sessão (o [] antigo aqui era um bug: rodava no
+  // instante do mount, quando `clientes` ainda estava vazio porque o
+  // onSnapshot do Firestore ainda não tinha respondido, então nunca
+  // sincronizava nada de verdade).
+  useEffect(() => {
+    if (!podeEditar(usuario)) return;
+    if (jaSincronizouRef.current) return;
+    if (clientes.length === 0) return; // espera os dados chegarem
+    jaSincronizouRef.current = true;
+    sincronizarEtapasAutomaticas(clientes, cobrancas, tarefas, responsaveis, hoje).then(n => { if (n>0) setMsgSync(`${n} cliente(s) avançaram de etapa automaticamente.`); });
+  }, [clientes]);
+  async function sincronizarAgora(){
+    setSincronizando(true);
+    const n = await sincronizarEtapasAutomaticas(clientes, cobrancas, tarefas, responsaveis, hoje);
+    setMsgSync(n>0 ? `${n} cliente(s) avançaram de etapa automaticamente.` : 'Tudo já estava em dia com a data de hoje.');
+    setSincronizando(false);
+    setTimeout(()=>setMsgSync(''), 4000);
+  }
+
+  const visoesTodas = useMemo(() => (
+    clientes
+      // item 21: honorário só de êxito nunca entra no funil de mensalidade;
+      // clientes inativos (saíram da base) também somem do funil.
+      .filter(c => c.tipoCobranca !== 'EXITO' && c.ativo !== false)
+      .map(c => montarVisaoCliente(c, cobrancas, tarefas, responsaveis, hoje))
+  ), [clientes, cobrancas, tarefas, responsaveis]);
+
+  const visoes = useMemo(() => visoesTodas.filter(v => {
+    if (busca) {
+      const alvo = `${v.nome} ${v.codigo}`.toLowerCase();
+      if (!alvo.includes(busca.toLowerCase())) return false;
+    }
+    if (filtros.carteira && v.carteira !== filtros.carteira) return false;
+    if (filtros.responsavel && v.responsavelEtapa !== filtros.responsavel) return false;
+    if (filtros.status === 'EM_DIA' && v.diasAtraso > 0) return false;
+    if (filtros.status === 'ATRASO' && !(v.diasAtraso > 0 && v.diasAtraso < 30)) return false;
+    if (filtros.status === 'INADIMPLENTE' && !(v.diasAtraso >= 30)) return false;
+    if (filtros.tarefas === 'ATRASADAS' && v.tarefasAtrasadas.length === 0) return false;
+    return true;
+  }), [visoesTodas, busca, filtros]);
+
+  const colunasFunil = ETAPAS.filter(e => e.key !== 'REGULARIZADO');
+  const regularizados = visoes.filter(v => v.etapaEfetiva === 'REGULARIZADO');
+
+  async function mover(clienteId, novaEtapa){
+    if (!podeEditar(usuario)) return;
+    const cliente = clientes.find(c => c.id === clienteId);
+    if (!cliente) return;
+    await moverEtapaCliente(cliente, cobrancas, novaEtapa, responsaveis, usuario.nome);
+  }
+
+  return (
+    <>
+      <FiltrosKanban filtros={filtros} setFiltros={setFiltros} carteiras={config.carteiras || CARTEIRAS_PADRAO} responsaveisNomes={[...new Set(Object.values(responsaveis))]} />
+      <div style={{padding:'8px 16px 0', display:'flex', alignItems:'center', gap:10}}>
+        {podeEditar(usuario) && <button className="btn btn-s btn-sm" onClick={sincronizarAgora} disabled={sincronizando}>{sincronizando?'Sincronizando...':'🔄 Sincronizar etapas com a data de hoje'}</button>}
+        {msgSync && <span className="badge b-b">{msgSync}</span>}
+      </div>
+      <KanbanBoard visoes={visoes} colunas={colunasFunil} onMover={mover} onAbrir={onAbrirCliente} arrastavel={podeEditar(usuario)} />
+      {regularizados.length > 0 && (
+        <div style={{padding:'0 16px 16px'}}>
+          <div className="ct" style={{marginBottom:8}}>Regularizados ({regularizados.length})</div>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+            {regularizados.map(v => (
+              <div key={v.id} style={{width:250}}>
+                <KanbanCard view={v} arrastavel={false} onAbrir={onAbrirCliente} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ===================================================================
+   MODAL DE DETALHE DO CLIENTE — abas (item 7 do pedido).
+   =================================================================== */
+function AbaInformacoes({ cliente, config, view, usuario, onSalvar }){
+  const [form, setForm] = useState(cliente);
+  useEffect(()=>setForm(cliente), [cliente.id]);
+  const editar = podeEditar(usuario);
+  const campo = (k,v) => setForm(f => ({...f, [k]:v}));
+  return (
+    <div>
+      <div className="fr">
+        <div className="fg"><label className="fl">Nome</label><input className="fi" disabled={!editar} value={form.nome||''} onChange={e=>campo('nome',e.target.value)} /></div>
+        <div className="fg"><label className="fl">Código</label><input className="fi" disabled={!editar} value={form.codigo||''} onChange={e=>campo('codigo',e.target.value)} /></div>
+        <div className="fg"><label className="fl">Carteira</label>
+          <select className="fs" disabled={!editar} value={form.carteira||''} onChange={e=>campo('carteira',e.target.value)}>
+            <option value="">—</option>
+            {(config.carteiras||CARTEIRAS_PADRAO).map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="fg"><label className="fl">Tipo de cobrança</label>
+          <select className="fs" disabled={!editar} value={form.tipoCobranca||'MENSALIDADE'} onChange={e=>campo('tipoCobranca',e.target.value)}>
+            <option value="MENSALIDADE">Mensalidade</option>
+            <option value="EXITO">Honorários de êxito</option>
+          </select>
+        </div>
+      </div>
+      <div className="fg"><label className="fl">Status</label>
+        <div style={{fontSize:13}}>
+          {view.etapaEfetiva ? `${ETAPA_LABEL[view.etapaEfetiva]} · responsável ${view.responsavelEtapa}` : 'Em dia — fora do funil'}
+        </div>
+      </div>
+      <div className="fr">
+        <div className="fg"><label className="fl">Valor da mensalidade</label><div style={{fontSize:13,fontWeight:600}}>{form.referenciaValor ? fmtMoney(form.referenciaValor) : (view.referencia ? fmtMoney(view.referencia.valor) : '—')}</div></div>
+        <div className="fg"><label className="fl">Dias de atraso</label><div style={{fontSize:13,fontWeight:600,color: view.diasAtraso>0?'var(--red)':'var(--green)'}}>{view.diasAtraso>0?`${view.diasAtraso} dias`:'Em dia'}</div></div>
+      </div>
+      {editar && <button className="btn btn-g btn-sm" onClick={()=>onSalvar(form)}>Salvar informações</button>}
+
+      <div className="fsec" style={{marginTop:16}}>Cliente na base (item 7 da ata)</div>
+      <p style={{fontSize:12,color:'var(--t2)',marginBottom:8}}>Quando o cliente sai da base, encerre aqui — a cobrança recorrente para de gerar novas cobranças automaticamente e ele some do Kanban.</p>
+      {cliente.ativo === false
+        ? <span className="badge b-r">Inativo (fora da base)</span>
+        : <span className="badge b-g">Ativo</span>}
+      {editar && (
+        cliente.ativo === false
+          ? <button className="btn btn-s btn-sm" style={{marginLeft:8}} onClick={()=>onSalvar({...form, ativo:true})}>Reativar cliente</button>
+          : <button className="btn btn-d btn-sm" style={{marginLeft:8}} onClick={()=>{ if(confirm('Encerrar este cliente? A cobrança recorrente para de gerar novas cobranças.')) onSalvar({...form, ativo:false, cobrancaRecorrente: {...(form.cobrancaRecorrente||{}), ativo:false}}); }}>Encerrar cliente (saiu da base)</button>
+      )}
+    </div>
+  );
+}
+
+// Observação por cobrança — edição inline, usada tanto na lista geral
+// de Cobranças quanto na ficha do cliente.
+function ObservacaoCobranca({ cobranca, editar }){
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(cobranca.observacoes || '');
+  useEffect(()=>setTexto(cobranca.observacoes||''), [cobranca.id, cobranca.observacoes]);
+  async function salvar(){
+    await atualizarDoc('cobrancas', cobranca.id, { observacoes: texto });
+    setEditando(false);
+  }
+  if (!editando) {
+    return (
+      <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+        <span style={{color: cobranca.observacoes ? 'var(--t1)' : 'var(--tl)', fontSize:12, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={cobranca.observacoes||''}>
+          {cobranca.observacoes || (editar ? 'sem observação' : '—')}
+        </span>
+        {editar && <button className="btn btn-s btn-xs" onClick={()=>setEditando(true)} title="Editar observação">✏️</button>}
+      </span>
+    );
+  }
+  return (
+    <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+      <input className="fi" style={{fontSize:12,padding:'4px 6px',width:160}} value={texto} onChange={e=>setTexto(e.target.value)} autoFocus onKeyDown={e=>{ if(e.key==='Enter') salvar(); if(e.key==='Escape'){ setTexto(cobranca.observacoes||''); setEditando(false);} }} />
+      <button className="btn btn-g btn-xs" onClick={salvar}>Salvar</button>
+      <button className="btn btn-s btn-xs" onClick={()=>{ setTexto(cobranca.observacoes||''); setEditando(false); }}>×</button>
+    </span>
+  );
+}
+
+function AbaCobranca({ cliente, cobrancas, usuario, onAtualizarCliente }){
+  const editar = podeEditar(usuario);
+  const [novo, setNovo] = useState({ valor:'', competencia: competenciaDe(new Date()), vencimento: toInputDate(new Date()) });
+  const [lancando, setLancando] = useState(false);
+  const doCliente = cobrancas.filter(c => c.clienteId === cliente.id).sort((a,b)=> toDate(b.vencimento) - toDate(a.vencimento));
+  const r = cliente.cobrancaRecorrente || {};
+  const [rec, setRec] = useState(r);
+  useEffect(()=>setRec(cliente.cobrancaRecorrente||{}), [cliente.id]);
+
+  async function lancar(){
+    if (!novo.valor || !novo.vencimento || lancando) return;
+    // Bug corrigido: sem essa trava, clicar duas vezes rápido (ou clicar
+    // de novo achando que não funcionou, já que não tinha nenhum aviso)
+    // criava a cobrança duas vezes. O botão agora desabilita assim que
+    // o clique é registrado e só libera de novo depois de terminar.
+    setLancando(true);
+    try {
+      const vencimentoDate = new Date(novo.vencimento+'T00:00:00');
+      await criarDoc('cobrancas', { clienteId: cliente.id, valor: parseMoney(novo.valor), competencia: competenciaDe(vencimentoDate), vencimento: vencimentoDate.toISOString(), dataPagamento: null, criadoEm: new Date().toISOString(), criadoPor: usuario.nome });
+      setNovo({ valor:'', competencia: competenciaDe(new Date()), vencimento: toInputDate(new Date()) });
+    } finally {
+      setLancando(false);
+    }
+  }
+  async function pagar(cobranca){
+    await atualizarDoc('cobrancas', cobranca.id, { dataPagamento: new Date().toISOString() });
+  }
+  async function estornar(cobranca){
+    await atualizarDoc('cobrancas', cobranca.id, { dataPagamento: null });
+  }
+  async function excluirCobranca(cobranca){
+    if (!confirm(`Excluir a cobrança de ${fmtMoney(cobranca.valor)} (vence ${fmtDate(cobranca.vencimento)})? Essa ação não pode ser desfeita.`)) return;
+    await excluirDoc('cobrancas', cobranca.id);
+  }
+  async function salvarRecorrencia(){
+    await onAtualizarCliente({ ...cliente, cobrancaRecorrente: rec });
+  }
+
+  return (
+    <div>
+      <div className="fsec">Cobrança recorrente (item 20)</div>
+      <div className="fr">
+        <div className="fg"><label className="fl">Ativa?</label>
+          <select className="fs" disabled={!editar} value={rec.ativo?'sim':'nao'} onChange={e=>setRec({...rec, ativo: e.target.value==='sim'})}>
+            <option value="nao">Não</option><option value="sim">Sim</option>
+          </select>
+        </div>
+        <div className="fg"><label className="fl">Valor (R$)</label><input className="fi" disabled={!editar} value={rec.valor||''} onChange={e=>setRec({...rec, valor:e.target.value})} placeholder="Ex.: 1.500,00" /></div>
+        <div className="fg"><label className="fl">Dia de vencimento</label><input className="fi" type="number" min="1" max="31" disabled={!editar} value={rec.diaVencimento||''} onChange={e=>setRec({...rec, diaVencimento:e.target.value})} /></div>
+        <div className="fg"><label className="fl">Periodicidade</label>
+          <select className="fs" disabled={!editar} value={rec.periodicidade||'MENSAL'} onChange={e=>setRec({...rec, periodicidade:e.target.value})}>
+            {Object.entries(PERIODICIDADES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+        <div className="fg"><label className="fl">Data inicial</label><input className="fi" type="date" disabled={!editar} value={toInputDate(rec.dataInicial)} onChange={e=>setRec({...rec, dataInicial:e.target.value?new Date(e.target.value+'T00:00:00').toISOString():null})} /></div>
+        <div className="fg"><label className="fl">Data final (opcional)</label><input className="fi" type="date" disabled={!editar} value={toInputDate(rec.dataFinal)} onChange={e=>setRec({...rec, dataFinal:e.target.value?new Date(e.target.value+'T00:00:00').toISOString():null})} /></div>
+        <div className="fg"><label className="fl">Qtd. parcelas (vazio = indefinido)</label><input className="fi" type="number" min="1" disabled={!editar} value={rec.quantidadeParcelas||''} onChange={e=>setRec({...rec, quantidadeParcelas:e.target.value})} /></div>
+        <div className="fg"><label className="fl">Forma de pagamento</label><input className="fi" disabled={!editar} value={rec.formaPagamento||''} onChange={e=>setRec({...rec, formaPagamento:e.target.value})} placeholder="Boleto, Pix..." /></div>
+      </div>
+      {editar && <button className="btn btn-s btn-sm" onClick={salvarRecorrencia}>Salvar recorrência</button>}
+
+      <div className="fsec" style={{marginTop:16}}>Lançar cobrança avulsa</div>
+      <div className="fr">
+        <div className="fg"><label className="fl">Valor</label><input className="fi" disabled={!editar} value={novo.valor} onChange={e=>setNovo({...novo,valor:e.target.value})} placeholder="1.500,00" /></div>
+        <div className="fg"><label className="fl">Vencimento</label><input className="fi" type="date" disabled={!editar} value={novo.vencimento} onChange={e=>setNovo({...novo,vencimento:e.target.value})} /></div>
+      </div>
+      {editar && <button className="btn btn-g btn-sm" onClick={lancar} disabled={lancando}>{lancando ? 'Lançando...' : 'Lançar'}</button>}
+
+      <div className="fsec" style={{marginTop:16}}>Histórico financeiro</div>
+      <div className="tlist">
+        {doCliente.map(c => (
+          <div key={c.id} className={`titem ${!c.dataPagamento && diffDays(c.vencimento, hojeSemHora())>0 ? 'ov2':''}`}>
+            <span style={{fontWeight:600}}>{fmtMoney(c.valor)}</span>
+            <span>vence {fmtDate(c.vencimento)}</span>
+            <span>{c.dataPagamento ? `pago em ${fmtDate(c.dataPagamento)}` : 'em aberto'}</span>
+            {c.geradaAutomaticamente && <span className="badge b-p">automática</span>}
+            <ObservacaoCobranca cobranca={c} editar={editar} />
+            {editar && (c.dataPagamento
+              ? <button className="btn btn-s btn-xs" style={{marginLeft:'auto'}} onClick={()=>estornar(c)}>Estornar</button>
+              : <button className="btn btn-g btn-xs" style={{marginLeft:'auto'}} onClick={()=>pagar(c)}>Marcar como paga</button>)}
+            {editar && <button className="btn btn-d btn-xs" onClick={()=>excluirCobranca(c)} title="Excluir cobrança">🗑️</button>}
+          </div>
+        ))}
+        {doCliente.length===0 && <div className="empty">Nenhuma cobrança lançada.</div>}
+      </div>
+    </div>
+  );
+}
+
+function AbaTarefas({ cliente, tarefas, usuario }){
+  const editar = podeEditar(usuario);
+  const [nova, setNova] = useState({ descricao:'', responsavel:'', prazo: toInputDate(new Date()), prioridade:'MEDIA' });
+  const [criando, setCriando] = useState(false);
+  const doCliente = tarefas.filter(t=>t.clienteId===cliente.id).sort((a,b)=> (a.status==='PENDENTE'?0:1) - (b.status==='PENDENTE'?0:1) || toDate(a.prazo)-toDate(b.prazo));
+
+  async function criar(){
+    if (!nova.descricao || !nova.responsavel || !nova.prazo || criando) return;
+    setCriando(true);
+    try {
+      await criarDoc('tarefas', { clienteId:cliente.id, descricao:nova.descricao, responsavel:nova.responsavel, prazo:new Date(nova.prazo+'T00:00:00').toISOString(), prioridade:nova.prioridade, status:'PENDENTE', automatica:false, criadoPor:usuario.nome, criadoEm:new Date().toISOString() });
+      setNova({ descricao:'', responsavel:'', prazo: toInputDate(new Date()), prioridade:'MEDIA' });
+    } finally {
+      setCriando(false);
+    }
+  }
+  async function concluir(t){ await atualizarDoc('tarefas', t.id, { status:'CONCLUIDA', dataConclusao:new Date().toISOString() }); }
+  async function reabrir(t){ await atualizarDoc('tarefas', t.id, { status:'PENDENTE', dataConclusao:null }); }
+  async function excluirTarefa(t){
+    if (!confirm(`Excluir a tarefa "${t.descricao}"? Essa ação não pode ser desfeita.`)) return;
+    await excluirDoc('tarefas', t.id);
+  }
+
+  return (
+    <div>
+      {editar && (
+        <>
+          <div className="fsec">Nova tarefa</div>
+          <div className="fr">
+            <div className="fg" style={{gridColumn:'1/3'}}><label className="fl">Descrição</label><input className="fi" value={nova.descricao} onChange={e=>setNova({...nova,descricao:e.target.value})} /></div>
+            <div className="fg"><label className="fl">Responsável</label><input className="fi" value={nova.responsavel} onChange={e=>setNova({...nova,responsavel:e.target.value})} /></div>
+            <div className="fg"><label className="fl">Prazo</label><input className="fi" type="date" value={nova.prazo} onChange={e=>setNova({...nova,prazo:e.target.value})} /></div>
+          </div>
+          <button className="btn btn-g btn-sm" onClick={criar} disabled={criando}>{criando?'Criando...':'Criar tarefa'}</button>
+          <div className="fsec" style={{marginTop:16}}>Tarefas</div>
+        </>
+      )}
+      <div className="tlist">
+        {doCliente.map(t => {
+          const atrasada = t.status==='PENDENTE' && diffDays(t.prazo, hojeSemHora())>0;
+          return (
+            <div key={t.id} className={`titem ${atrasada?'ov2':''}`}>
+              <button className={`tcheck ${t.status==='CONCLUIDA'?'done':''}`} onClick={()=> t.status==='CONCLUIDA' ? reabrir(t) : concluir(t)}>{t.status==='CONCLUIDA'?'✓':''}</button>
+              <div>
+                <div style={{fontWeight:500}}>{t.descricao}</div>
+                <div style={{color:'var(--t2)'}}>{t.responsavel} · prazo {fmtDate(t.prazo)}{t.automatica?' · automática':''}{atrasada?` · ⚠️ atrasada há ${diffDays(t.prazo,hojeSemHora())}d`:''}</div>
+              </div>
+              {editar && <button className="btn btn-d btn-xs" style={{marginLeft:'auto'}} onClick={()=>excluirTarefa(t)} title="Excluir tarefa">🗑️</button>}
+            </div>
+          );
+        })}
+        {doCliente.length===0 && <div className="empty">Nenhuma tarefa ainda.</div>}
+      </div>
+    </div>
+  );
+}
+
+function AbaHistorico({ cliente, historico }){
+  const doCliente = historico.filter(h=>h.clienteId===cliente.id).sort((a,b)=> toDate(b.data)-toDate(a.data));
+  return (
+    <div className="tlist">
+      {doCliente.map(h => (
+        <div key={h.id} className="note-item">
+          {h.texto}
+          <div className="note-meta">{fmtDate(h.data)} · {h.usuario}{h.etapa?` · ${ETAPA_LABEL[h.etapa]||h.etapa}`:''}</div>
+        </div>
+      ))}
+      {doCliente.length===0 && <div className="empty">Nenhum registro ainda.</div>}
+    </div>
+  );
+}
+
+function AbaObservacoes({ cliente, usuario, onSalvar }){
+  const [texto, setTexto] = useState(cliente.observacoes||'');
+  useEffect(()=>setTexto(cliente.observacoes||''), [cliente.id]);
+  return (
+    <div>
+      <textarea className="fi" disabled={!podeEditar(usuario)} value={texto} onChange={e=>setTexto(e.target.value)} placeholder="Observações internas sobre o cliente..." />
+      {podeEditar(usuario) && <button className="btn btn-g btn-sm" style={{marginTop:10}} onClick={()=>onSalvar(texto)}>Salvar observações</button>}
+    </div>
+  );
+}
+
+function ClienteDetalheModal({ cliente, cobrancas, tarefas, historico, config, usuario, onClose }){
+  const [aba, setAba] = useState('info');
+  const hoje = hojeSemHora();
+  const view = montarVisaoCliente(cliente, cobrancas, tarefas, config.responsaveis||RESPONSAVEIS_PADRAO, hoje);
+
+  async function salvarInfo(form){ await atualizarDoc('clientes', cliente.id, form); }
+  async function salvarObs(texto){ await atualizarDoc('clientes', cliente.id, { observacoes: texto }); }
+  async function atualizarCliente(obj){ await atualizarDoc('clientes', cliente.id, obj); }
+
+  const abas = [
+    { key:'info', label:'Informações' }, { key:'cobranca', label:'Cobrança' },
+    { key:'tarefas', label:`Tarefas${view.tarefasAtrasadas.length?` ⚠️${view.tarefasAtrasadas.length}`:''}` },
+    { key:'historico', label:'Histórico' }, { key:'obs', label:'Observações' },
+  ];
+
+  return (
+    <Modal titulo={`${cliente.nome} — ${cliente.codigo}`} onClose={onClose}>
+      <div style={{padding:'0 24px'}}>
+        {podeEditar(usuario) && (
+          <div style={{display:'flex',gap:8,alignItems:'center',padding:'10px 0',flexWrap:'wrap'}}>
+            <label className="fl" style={{margin:0}}>Etapa do funil:</label>
+            <select className="fs" style={{width:260}} value={cliente.etapaAtual || (view.etapaEfetiva==='REGULARIZADO'?'REGULARIZADO':'')}
+              onChange={async e => { await moverEtapaCliente(cliente, cobrancas, e.target.value, config.responsaveis||RESPONSAVEIS_PADRAO, usuario.nome); }}>
+              <option value="">Em dia (fora do funil)</option>
+              {ETAPAS.filter(e=>e.key!=='REGULARIZADO').map(e => <option key={e.key} value={e.key}>{e.label}</option>)}
+              <option value="REGULARIZADO">Regularizado (marcar manualmente)</option>
+            </select>
+            {cliente.travaManual ? (
+              <>
+                <span className="badge b-o">🔒 travado manualmente</span>
+                <button className="btn btn-s btn-xs" onClick={()=>destravarAutomatico(cliente, usuario.nome)}>Devolver ao automático (D-7→D+20)</button>
+              </>
+            ) : (
+              <span className="badge b-g">🤖 seguindo o fluxo automático por data</span>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="tabs">
+        {abas.map(a => <button key={a.key} className={`tab ${aba===a.key?'active':''}`} onClick={()=>setAba(a.key)}>{a.label}</button>)}
+      </div>
+      <div className="mbody">
+        {aba==='info' && <AbaInformacoes cliente={cliente} config={config} view={view} usuario={usuario} onSalvar={salvarInfo} />}
+        {aba==='cobranca' && <AbaCobranca cliente={cliente} cobrancas={cobrancas} usuario={usuario} onAtualizarCliente={atualizarCliente} />}
+        {aba==='tarefas' && <AbaTarefas cliente={cliente} tarefas={tarefas} usuario={usuario} />}
+        {aba==='historico' && <AbaHistorico cliente={cliente} historico={historico} />}
+        {aba==='obs' && <AbaObservacoes cliente={cliente} usuario={usuario} onSalvar={salvarObs} />}
+      </div>
+    </Modal>
+  );
+}
+
+/* ===================================================================
+   CLIENTES — cadastro (item 17) + importação CSV (item 18).
+   =================================================================== */
+function ClienteFormModal({ cliente, config, onClose, onSalvar }){
+  const [form, setForm] = useState(cliente || { nome:'', codigo:'', carteira:'', tipoCobranca:'MENSALIDADE', observacoes:'' });
+  const [salvando, setSalvando] = useState(false);
+  async function salvarClique(){
+    if (salvando) return; // trava contra clique duplo (criava cliente/cobrança duplicada)
+    setSalvando(true);
+    try { await onSalvar(form); } finally { setSalvando(false); }
+  }
+  return (
+    <Modal titulo={cliente ? 'Editar cliente' : 'Novo cliente'} onClose={onClose}
+      footer={<><button className="btn btn-s" onClick={onClose}>Cancelar</button><button className="btn btn-g" onClick={salvarClique} disabled={salvando}>{salvando?'Salvando...':'Salvar'}</button></>}>
+      <div className="mbody">
+        <div className="fr">
+          <div className="fg"><label className="fl">Código *</label><input className="fi" value={form.codigo||''} onChange={e=>setForm({...form,codigo:e.target.value})} /></div>
+          <div className="fg"><label className="fl">Nome *</label><input className="fi" value={form.nome||''} onChange={e=>setForm({...form,nome:e.target.value})} /></div>
+          <div className="fg"><label className="fl">Carteira</label>
+            <select className="fs" value={form.carteira||''} onChange={e=>setForm({...form,carteira:e.target.value})}>
+              <option value="">—</option>
+              {(config.carteiras||CARTEIRAS_PADRAO).map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="fg"><label className="fl">Tipo de cobrança</label>
+            <select className="fs" value={form.tipoCobranca||'MENSALIDADE'} onChange={e=>setForm({...form,tipoCobranca:e.target.value})}>
+              <option value="MENSALIDADE">Mensalidade</option>
+              <option value="EXITO">Honorários de êxito</option>
+            </select>
+          </div>
+        </div>
+        <div className="fg"><label className="fl">Observações</label><textarea className="fi" value={form.observacoes||''} onChange={e=>setForm({...form,observacoes:e.target.value})} /></div>
+      </div>
+    </Modal>
+  );
+}
+
+function ImportarCsvModal({ onClose, onImportar }){
+  const [texto, setTexto] = useState('codigo;nome;carteira;valor;vencimento\n1001;Fulano de Tal;Celeste;1500,00;10');
+  const [parsed, setParsed] = useState(null); // { headers, linhasDados, delimitador }
+  const [mapeamento, setMapeamento] = useState({ codigo:'', nome:'', carteira:'', valor:'', vencimento:'' });
+
+  function detectarColunas(){
+    const r = parseCsv(texto);
+    setParsed(r);
+    setMapeamento(adivinharMapeamento(r.headers));
+  }
+
+  const preview = useMemo(() => {
+    if (!parsed) return [];
+    const idx = campo => parsed.headers.indexOf(mapeamento[campo]);
+    const iCodigo = idx('codigo'), iNome = idx('nome'), iCarteira = idx('carteira'), iValor = idx('valor'), iVencimento = idx('vencimento');
+    return parsed.linhasDados.map(linha => ({
+      codigo: iCodigo>=0 ? linha[iCodigo] : '',
+      nome: iNome>=0 ? linha[iNome] : '',
+      carteira: iCarteira>=0 ? linha[iCarteira] : '',
+      valor: iValor>=0 ? linha[iValor] : '',
+      vencimento: iVencimento>=0 ? linha[iVencimento] : '',
+    }));
+  }, [parsed, mapeamento]);
+
+  // Validações (item 18: nunca duplicar, e nunca importar lixo silenciosamente).
+  const codigosVistos = new Map();
+  const linhasComProblema = new Set();
+  preview.forEach((p, i) => {
+    if (!p.codigo || !p.nome) { linhasComProblema.add(i); return; }
+    if (codigosVistos.has(p.codigo)) { linhasComProblema.add(i); linhasComProblema.add(codigosVistos.get(p.codigo)); }
+    codigosVistos.set(p.codigo, i);
+  });
+  const podeImportar = parsed && mapeamento.codigo && mapeamento.nome && preview.length > 0 && linhasComProblema.size === 0;
+
+  const CAMPOS = [
+    { key:'codigo', label:'Código (obrigatório)' },
+    { key:'nome', label:'Nome (obrigatório)' },
+    { key:'carteira', label:'Carteira' },
+    { key:'valor', label:'Valor da mensalidade' },
+    { key:'vencimento', label:'Dia de vencimento' },
+  ];
+
+  return (
+    <Modal titulo="Importar clientes por CSV" onClose={onClose} wide
+      footer={<><button className="btn btn-s" onClick={onClose}>Cancelar</button><button className="btn btn-g" onClick={()=>onImportar(preview)} disabled={!podeImportar}>Confirmar importação ({preview.length})</button></>}>
+      <div className="mbody">
+        <p style={{fontSize:12,color:'var(--t2)',marginBottom:8}}>
+          Cole os dados exportados (vírgula ou ponto-e-vírgula, com ou sem aspas). O código é o identificador único: se já existir, o cliente é atualizado em vez de duplicado — campos deixados em branco na planilha não apagam o que já está cadastrado.
+        </p>
+        <textarea className="fi" style={{minHeight:140,fontFamily:'JetBrains Mono, monospace',fontSize:12}} value={texto} onChange={e=>{ setTexto(e.target.value); setParsed(null); }} />
+        <button className="btn btn-s btn-sm" style={{marginTop:8}} onClick={detectarColunas}>Detectar colunas</button>
+
+        {parsed && (
+          <>
+            <div className="fsec" style={{marginTop:16}}>
+              Mapeamento de colunas {parsed.delimitador===';' ? '(separador: ;)' : '(separador: ,)'}
+            </div>
+            <div className="fr">
+              {CAMPOS.map(c => (
+                <div className="fg" key={c.key}>
+                  <label className="fl">{c.label}</label>
+                  <select className="fs" value={mapeamento[c.key]} onChange={e=>setMapeamento({...mapeamento, [c.key]: e.target.value})}>
+                    <option value="">— não importar —</option>
+                    {parsed.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {!mapeamento.codigo || !mapeamento.nome ? (
+              <p style={{fontSize:12,color:'var(--red)',marginTop:8}}>Selecione pelo menos as colunas de Código e Nome pra continuar.</p>
+            ) : linhasComProblema.size > 0 ? (
+              <p style={{fontSize:12,color:'var(--red)',marginTop:8}}>
+                {linhasComProblema.size} linha(s) com problema (código/nome em branco ou código duplicado no arquivo) — destacadas em vermelho abaixo. Corrija na planilha e cole de novo antes de importar.
+              </p>
+            ) : (
+              <p style={{fontSize:12,color:'var(--green)',marginTop:8}}>Tudo certo — {preview.length} cliente(s) prontos pra importar.</p>
+            )}
+
+            <div className="fsec" style={{marginTop:12}}>Prévia</div>
+            <div style={{maxHeight:280,overflowY:'auto'}}>
+              <table className="tbl">
+                <thead><tr><th>Código</th><th>Nome</th><th>Carteira</th><th>Valor</th><th>Vencimento</th></tr></thead>
+                <tbody>
+                  {preview.map((p,i)=>(
+                    <tr key={i} style={linhasComProblema.has(i) ? { background:'var(--redl)' } : undefined}>
+                      <td>{p.codigo || '—'}</td><td>{p.nome || '—'}</td><td>{p.carteira || '—'}</td><td>{p.valor || '—'}</td><td>{p.vencimento || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function ClientesView({ clientes, cobrancas, tarefas, historico, config, usuario, busca, onAbrirCliente }){
+  const [modalNovo, setModalNovo] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [importando, setImportando] = useState(false);
+  const [mostrarInativos, setMostrarInativos] = useState(false);
+  const [excluindo, setExcluindo] = useState(null);
+
+  const filtrados = clientes.filter(c => !busca || `${c.nome} ${c.codigo}`.toLowerCase().includes(busca.toLowerCase()));
+
+  async function salvar(form){
+    if (!form.codigo || !form.nome) return;
+    if (form.id) { await atualizarDoc('clientes', form.id, form); }
+    else { await criarDoc('clientes', { ...form, etapaAtual: null, createdAt: new Date().toISOString() }); }
+    setModalNovo(false); setEditando(null);
+  }
+  async function excluirCliente(c, e){
+    e.stopPropagation();
+    const cobrancasDele = (cobrancas||[]).filter(cb=>cb.clienteId===c.id).length;
+    const tarefasDele = (tarefas||[]).filter(t=>t.clienteId===c.id).length;
+    if (!confirm(`Excluir "${c.nome}" (${c.codigo})? Isso também apaga ${cobrancasDele} cobrança(s), ${tarefasDele} tarefa(s) e o histórico dele. Essa ação não pode ser desfeita.`)) return;
+    setExcluindo(c.id);
+    try {
+      for (const cb of (cobrancas||[]).filter(cb=>cb.clienteId===c.id)) await excluirDoc('cobrancas', cb.id);
+      for (const t of (tarefas||[]).filter(t=>t.clienteId===c.id)) await excluirDoc('tarefas', t.id);
+      for (const h of (historico||[]).filter(h=>h.clienteId===c.id)) await excluirDoc('historico', h.id);
+      await excluirDoc('clientes', c.id);
+    } finally {
+      setExcluindo(null);
+    }
+  }
+  async function importar(linhas){
+    for (const l of linhas) {
+      if (!l.codigo) continue;
+      const existente = clientes.find(c => c.codigo === l.codigo);
+      // Bug corrigido: reimportar uma planilha pra só atualizar valor/
+      // vencimento não pode apagar a carteira do cliente quando aquela
+      // coluna vier em branco na linha — só sobrescreve o que veio
+      // preenchido, preserva o resto (item 18: nunca duplicar/perder dado).
+      const dados = {
+        codigo: l.codigo,
+        nome: l.nome || existente?.nome || l.codigo,
+        carteira: l.carteira || existente?.carteira || '',
+        cobrancaRecorrente: (l.valor && l.vencimento) ? { ativo:true, valor: parseMoney(l.valor), diaVencimento: Number(l.vencimento), periodicidade: existente?.cobrancaRecorrente?.periodicidade || 'MENSAL', dataInicial: existente?.cobrancaRecorrente?.dataInicial || new Date().toISOString(), dataFinal: existente?.cobrancaRecorrente?.dataFinal || null, quantidadeParcelas: existente?.cobrancaRecorrente?.quantidadeParcelas || null, formaPagamento: existente?.cobrancaRecorrente?.formaPagamento || null } : (existente?.cobrancaRecorrente || null),
+      };
+      if (existente) await atualizarDoc('clientes', existente.id, dados);
+      else await criarDoc('clientes', { ...dados, tipoCobranca:'MENSALIDADE', ativo:true, etapaAtual: null, createdAt: new Date().toISOString() });
+    }
+    setImportando(false);
+  }
+
+  return (
+    <div className="spage">
+      <div className="toolbar" style={{marginBottom:14}}>
+        {podeEditar(usuario) && <button className="btn btn-g btn-sm" onClick={()=>setModalNovo(true)}>+ Novo cliente</button>}
+        {podeEditar(usuario) && <button className="btn btn-s btn-sm" onClick={()=>setImportando(true)}>Importar CSV</button>}
+        <label style={{fontSize:12,display:'flex',alignItems:'center',gap:6,marginLeft:'auto'}}>
+          <input type="checkbox" checked={mostrarInativos} onChange={e=>setMostrarInativos(e.target.checked)} /> Mostrar inativos
+        </label>
+      </div>
+      <table className="tbl">
+        <thead><tr><th>Código</th><th>Nome</th><th>Carteira</th><th>Tipo</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {filtrados.filter(c => mostrarInativos || c.ativo !== false).map(c => (
+            <tr key={c.id} style={{cursor:'pointer', opacity: c.ativo===false?0.5:1}} onClick={()=>onAbrirCliente(c)}>
+              <td>{c.codigo}</td><td>{c.nome}</td><td>{c.carteira||'—'}</td>
+              <td>{c.tipoCobranca==='EXITO'?'Honorários de êxito':'Mensalidade'}</td>
+              <td>{c.ativo===false ? <span className="badge b-r">Inativo</span> : (c.etapaAtual ? ETAPA_CURTO[c.etapaAtual] : 'Em dia')}</td>
+              <td onClick={e=>e.stopPropagation()}>
+                {podeEditar(usuario) && <button className="btn btn-s btn-xs" onClick={()=>setEditando(c)}>Editar</button>}
+                {podeEditar(usuario) && <button className="btn btn-d btn-xs" style={{marginLeft:6}} onClick={(e)=>excluirCliente(c,e)} disabled={excluindo===c.id} title="Excluir cliente">{excluindo===c.id?'...':'🗑️'}</button>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {filtrados.length===0 && <div className="empty">Nenhum cliente cadastrado.</div>}
+      {modalNovo && <ClienteFormModal config={config} onClose={()=>setModalNovo(false)} onSalvar={salvar} />}
+      {editando && <ClienteFormModal cliente={editando} config={config} onClose={()=>setEditando(null)} onSalvar={salvar} />}
+      {importando && <ImportarCsvModal onClose={()=>setImportando(false)} onImportar={importar} />}
+    </div>
+  );
+}
+
+/* ===================================================================
+   COBRANÇAS — visão geral de todas as cobranças (item 19).
+   =================================================================== */
+function ImportarCobrancasModal({ clientes, cobrancas, onClose, usuario }){
+  const [texto, setTexto] = useState('codigo;nome;carteira;valor;vencimento;tipo\nC047;Beleza Natu Cosmeticos;Celeste;562,50;03/09/2026;Cobrança Avulsa');
+  const [parsed, setParsed] = useState(null);
+  const [mapeamento, setMapeamento] = useState({ codigo:'', nome:'', carteira:'', valor:'', vencimento:'', tipo:'' });
+  const [importando, setImportando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  const [erro, setErro] = useState('');
+  const [progresso, setProgresso] = useState(null);
+
+  function detectarColunas(){
+    const r = parseCsv(texto);
+    setParsed(r);
+    const auto = adivinharMapeamento(r.headers);
+    const idxTipo = r.headers.findIndex(h => h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes('tipo'));
+    setMapeamento({ ...auto, tipo: idxTipo>=0 ? r.headers[idxTipo] : '' });
+  }
+
+  // Datas brasileiras (DD/MM/AAAA) — o mesmo formato que sai do Asaas/Excel.
+  function parseDataBR(str){
+    const s = String(str || '').trim();
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+    const iso = new Date(s);
+    return isNaN(iso) ? null : iso;
+  }
+
+  const preview = useMemo(() => {
+    if (!parsed) return [];
+    const idx = campo => parsed.headers.indexOf(mapeamento[campo]);
+    const iCodigo = idx('codigo'), iNome = idx('nome'), iCarteira = idx('carteira'), iValor = idx('valor'), iVencimento = idx('vencimento'), iTipo = idx('tipo');
+    return parsed.linhasDados.map(linha => {
+      const vencStr = iVencimento>=0 ? linha[iVencimento] : '';
+      const vencData = parseDataBR(vencStr);
+      return {
+        codigo: iCodigo>=0 ? linha[iCodigo] : '',
+        nome: iNome>=0 ? linha[iNome] : '',
+        carteira: iCarteira>=0 ? linha[iCarteira] : '',
+        valor: iValor>=0 ? parseMoney(linha[iValor]) : 0,
+        vencimentoStr: vencStr,
+        vencimento: vencData,
+        tipo: iTipo>=0 ? linha[iTipo] : '',
+      };
+    });
+  }, [parsed, mapeamento]);
+
+  const linhasComProblema = new Set();
+  preview.forEach((p, i) => { if (!p.codigo || !p.valor || !p.vencimento) linhasComProblema.add(i); });
+  const clientesNovos = new Set(preview.filter(p=>p.codigo && !clientes.some(c=>c.codigo===p.codigo)).map(p=>p.codigo));
+  const podeImportar = parsed && mapeamento.codigo && mapeamento.valor && mapeamento.vencimento && preview.length > 0 && linhasComProblema.size === 0;
+
+  const CAMPOS = [
+    { key:'codigo', label:'Código (obrigatório)' },
+    { key:'valor', label:'Valor (obrigatório)' },
+    { key:'vencimento', label:'Vencimento — data DD/MM/AAAA (obrigatório)' },
+    { key:'nome', label:'Nome (só usado se o cliente ainda não existir)' },
+    { key:'carteira', label:'Carteira (só usado se o cliente ainda não existir)' },
+    { key:'tipo', label:'Tipo de cobrança (opcional)' },
+  ];
+
+  async function importar(){
+    setImportando(true);
+    setErro('');
+    let cobrancasCriadas = 0, clientesCriados = 0, puladas = 0;
+    const recorrenteJaConfigurado = new Set();
+    try {
+      for (const [i, p] of preview.entries()) {
+        if (!p.codigo || !p.valor || !p.vencimento) { puladas++; continue; }
+        let cliente = clientes.find(c => c.codigo === p.codigo);
+        if (!cliente) {
+          const novoId = await criarDoc('clientes', {
+            codigo: p.codigo, nome: p.nome || p.codigo, carteira: p.carteira || '', tipoCobranca: 'MENSALIDADE',
+            ativo: true, etapaAtual: null, observacoes: '', createdAt: new Date().toISOString(),
+          });
+          cliente = { id: novoId, codigo: p.codigo };
+          clientes.push(cliente); // pra próximas linhas do mesmo lote acharem sem duplicar
+          clientesCriados++;
+        }
+        // Idempotência: reimportar o mesmo arquivo não duplica a cobrança
+        // (mesmo cliente + mesmo vencimento + mesmo valor já existente = pula).
+        const vencIso = p.vencimento.toISOString();
+        const jaExiste = cobrancas.some(cb => cb.clienteId === cliente.id && cb.valor === p.valor && cb.vencimento && cb.vencimento.slice(0,10) === vencIso.slice(0,10))
+          || (window.__cobrancasImportadasNesteLote || []).some(cb => cb.clienteId===cliente.id && cb.valor===p.valor && cb.vencimento.slice(0,10)===vencIso.slice(0,10));
+        if (jaExiste) { puladas++; continue; }
+
+        window.__cobrancasImportadasNesteLote = window.__cobrancasImportadasNesteLote || [];
+        window.__cobrancasImportadasNesteLote.push({ clienteId: cliente.id, valor: p.valor, vencimento: vencIso });
+
+        await criarDoc('cobrancas', {
+          clienteId: cliente.id, valor: p.valor, competencia: competenciaDe(p.vencimento), vencimento: vencIso,
+          dataPagamento: null, geradaAutomaticamente: false, criadoEm: new Date().toISOString(), criadoPor: usuario.nome,
+        });
+        cobrancasCriadas++;
+        setProgresso({ atual: i+1, total: preview.length });
+
+        // "Cobrança Recorrente" (assinatura em aberto, sem data final): monta
+        // a recorrência automática do cliente uma vez, com o dia dessa cobrança.
+        if (/recorrente/i.test(p.tipo) && !recorrenteJaConfigurado.has(cliente.id) && !(cliente.cobrancaRecorrente && cliente.cobrancaRecorrente.ativo)) {
+          await atualizarDoc('clientes', cliente.id, {
+            cobrancaRecorrente: { ativo: true, valor: p.valor, diaVencimento: p.vencimento.getDate(), periodicidade: 'MENSAL', dataInicial: null, dataFinal: null, quantidadeParcelas: null, formaPagamento: null },
+          });
+          recorrenteJaConfigurado.add(cliente.id);
+        }
+      }
+      window.__cobrancasImportadasNesteLote = [];
+      setResultado({ cobrancasCriadas, clientesCriados, puladas });
+    } catch (err) {
+      // Antes, um erro no meio do lote (ex.: regra do Firestore bloqueando
+      // a escrita) parava tudo silenciosamente — sem nenhuma mensagem.
+      // Agora mostra o que aconteceu e quanto já tinha sido importado até parar.
+      console.error('Erro ao importar cobranças:', err);
+      setErro(`Parou no meio da importação (${cobrancasCriadas} já criada(s) até aqui): ${err && err.message ? err.message : err}. Se a mensagem falar de permissão, confira a regra do Firestore.`);
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  return (
+    <Modal titulo="Importar cobranças por CSV (com data real)" onClose={onClose} wide
+      footer={<>
+        <button className="btn btn-s" onClick={onClose}>{resultado ? 'Fechar' : 'Cancelar'}</button>
+        {!resultado && <button className="btn btn-g" onClick={importar} disabled={!podeImportar || importando}>{importando?(progresso?`Importando... (${progresso.atual}/${progresso.total})`:'Importando...'):`Confirmar importação (${preview.length})`}</button>}
+      </>}>
+      <div className="mbody">
+        {erro && (
+          <div className="badge b-r" style={{display:'block',marginBottom:12,padding:'8px 10px'}}>{erro}</div>
+        )}
+        {resultado ? (
+          <div>
+            <p style={{fontSize:14,fontWeight:600,color:'var(--green)',marginBottom:8}}>Importação concluída.</p>
+            <ul style={{fontSize:13,color:'var(--t2)',lineHeight:1.8}}>
+              <li>{resultado.cobrancasCriadas} cobrança(s) criada(s)</li>
+              <li>{resultado.clientesCriados} cliente(s) novo(s) cadastrado(s) automaticamente (código não existia ainda)</li>
+              <li>{resultado.puladas} linha(s) pulada(s) (dado incompleto ou já importada antes — evita duplicar)</li>
+            </ul>
+          </div>
+        ) : (
+          <>
+            <p style={{fontSize:12,color:'var(--t2)',marginBottom:8}}>
+              Diferente do importador de Clientes, este cria cobranças de verdade (com data e valor reais) — várias linhas com o mesmo código são normais (parcelas/cobranças diferentes do mesmo cliente). Se o código ainda não existir, o cliente é cadastrado automaticamente. Reimportar o mesmo arquivo não duplica nada.
+            </p>
+            <textarea className="fi" style={{minHeight:140,fontFamily:'JetBrains Mono, monospace',fontSize:12}} value={texto} onChange={e=>{ setTexto(e.target.value); setParsed(null); }} />
+            <button className="btn btn-s btn-sm" style={{marginTop:8}} onClick={detectarColunas}>Detectar colunas</button>
+
+            {parsed && (
+              <>
+                <div className="fsec" style={{marginTop:16}}>Mapeamento de colunas {parsed.delimitador===';' ? '(separador: ;)' : '(separador: ,)'}</div>
+                <div className="fr">
+                  {CAMPOS.map(c => (
+                    <div className="fg" key={c.key}>
+                      <label className="fl">{c.label}</label>
+                      <select className="fs" value={mapeamento[c.key]} onChange={e=>setMapeamento({...mapeamento, [c.key]: e.target.value})}>
+                        <option value="">— não importar —</option>
+                        {parsed.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+
+                {!mapeamento.codigo || !mapeamento.valor || !mapeamento.vencimento ? (
+                  <p style={{fontSize:12,color:'var(--red)',marginTop:8}}>Selecione pelo menos Código, Valor e Vencimento.</p>
+                ) : linhasComProblema.size > 0 ? (
+                  <p style={{fontSize:12,color:'var(--red)',marginTop:8}}>{linhasComProblema.size} linha(s) com código, valor ou vencimento inválido/em branco — destacadas abaixo.</p>
+                ) : (
+                  <p style={{fontSize:12,color:'var(--green)',marginTop:8}}>Tudo certo — {preview.length} cobrança(s), sendo {clientesNovos.size} cliente(s) novo(s).</p>
+                )}
+
+                <div className="fsec" style={{marginTop:12}}>Prévia</div>
+                <div style={{maxHeight:280,overflowY:'auto'}}>
+                  <table className="tbl">
+                    <thead><tr><th>Código</th><th>Nome</th><th>Carteira</th><th>Valor</th><th>Vencimento</th><th>Tipo</th></tr></thead>
+                    <tbody>
+                      {preview.map((p,i)=>(
+                        <tr key={i} style={linhasComProblema.has(i) ? { background:'var(--redl)' } : (clientesNovos.has(p.codigo) ? { background:'var(--green-bg)' } : undefined)}>
+                          <td>{p.codigo || '—'}</td><td>{p.nome || '—'}</td><td>{p.carteira || '—'}</td>
+                          <td>{p.valor ? fmtMoney(p.valor) : '—'}</td>
+                          <td>{p.vencimento ? fmtDate(p.vencimento) : (p.vencimentoStr || '—')}</td>
+                          <td>{p.tipo || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function CobrancasView({ clientes, cobrancas, usuario, busca }){
+  const [filtroStatus, setFiltroStatus] = useState('');
+  const [dataDe, setDataDe] = useState('');
+  const [dataAte, setDataAte] = useState('');
+  const [importando, setImportando] = useState(false);
+  const hoje = hojeSemHora();
+  const nomePorCliente = Object.fromEntries(clientes.map(c=>[c.id, c]));
+  const linhas = cobrancas
+    .map(c => ({ ...c, cliente: nomePorCliente[c.clienteId], statusCalc: statusCobranca(c, hoje) }))
+    .filter(c => c.cliente)
+    .filter(c => !busca || `${c.cliente.nome} ${c.cliente.codigo}`.toLowerCase().includes(busca.toLowerCase()))
+    .filter(c => !filtroStatus || c.statusCalc.status === filtroStatus)
+    // Filtro por data (vencimento) — item pedido: "de" e "até".
+    .filter(c => !dataDe || toDate(c.vencimento) >= new Date(dataDe+'T00:00:00'))
+    .filter(c => !dataAte || toDate(c.vencimento) <= new Date(dataAte+'T23:59:59'))
+    .sort((a,b)=> toDate(b.vencimento) - toDate(a.vencimento));
+
+  async function pagar(c){ await atualizarDoc('cobrancas', c.id, { dataPagamento: new Date().toISOString() }); }
+  async function excluir(c){
+    if (!confirm(`Excluir a cobrança de ${c.cliente.nome} (${fmtMoney(c.valor)}, vence ${fmtDate(c.vencimento)})? Essa ação não pode ser desfeita.`)) return;
+    await excluirDoc('cobrancas', c.id);
+  }
+
+  return (
+    <div className="spage">
+      <div className="toolbar" style={{marginBottom:14}}>
+        <select className="fsel" value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value)}>
+          <option value="">Todos os status</option>
+          <option value="PENDENTE">Pendente (não vencida)</option>
+          <option value="ATRASADA">Atrasada</option>
+          <option value="PAGA">Paga</option>
+        </select>
+        <label className="fl" style={{margin:'0 0 0 4px'}}>Vencimento de:</label>
+        <input className="fsel" type="date" value={dataDe} onChange={e=>setDataDe(e.target.value)} />
+        <label className="fl" style={{margin:0}}>até:</label>
+        <input className="fsel" type="date" value={dataAte} onChange={e=>setDataAte(e.target.value)} />
+        {(dataDe || dataAte) && <button className="btn btn-s btn-xs" onClick={()=>{setDataDe('');setDataAte('');}}>Limpar datas</button>}
+        {podeEditar(usuario) && <button className="btn btn-s btn-sm" style={{marginLeft:'auto'}} onClick={()=>setImportando(true)}>Importar cobranças (CSV)</button>}
+      </div>
+      <table className="tbl">
+        <thead><tr><th>Cliente</th><th>Competência</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Observação</th><th></th></tr></thead>
+        <tbody>
+          {linhas.map(c => (
+            <tr key={c.id}>
+              <td>{c.cliente.nome} ({c.cliente.codigo})</td>
+              <td>{c.competencia||'—'}</td>
+              <td>{fmtMoney(c.valor)}</td>
+              <td>{fmtDate(c.vencimento)}</td>
+              <td>
+                {c.dataPagamento ? <span className="badge b-g">Paga em {fmtDate(c.dataPagamento)}</span>
+                  : c.statusCalc.status==='ATRASADA' ? <span className="badge b-r">{c.statusCalc.diasAtraso}d de atraso</span>
+                  : <span className="badge b-b">Pendente</span>}
+              </td>
+              <td><ObservacaoCobranca cobranca={c} editar={podeEditar(usuario)} /></td>
+              <td>
+                {podeEditar(usuario) && !c.dataPagamento && <button className="btn btn-g btn-xs" onClick={()=>pagar(c)}>Marcar paga</button>}
+                {podeEditar(usuario) && <button className="btn btn-d btn-xs" style={{marginLeft:6}} onClick={()=>excluir(c)} title="Excluir cobrança">🗑️</button>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {linhas.length===0 && <div className="empty">Nenhuma cobrança encontrada.</div>}
+      {importando && <ImportarCobrancasModal clientes={clientes} cobrancas={cobrancas} usuario={usuario} onClose={()=>setImportando(false)} />}
+    </div>
+  );
+}
+
+/* ===================================================================
+   TAREFAS — lista geral (item 8, com os mesmos filtros do pedido).
+   =================================================================== */
+function TarefasView({ clientes, tarefas, usuario, busca }){
+  const [filtros, setFiltros] = useState({ status:'', responsavel:'', atrasadas:false });
+  const hoje = hojeSemHora();
+  const nomePorCliente = Object.fromEntries(clientes.map(c=>[c.id, c]));
+  const responsaveisSet = [...new Set(tarefas.map(t=>t.responsavel).filter(Boolean))];
+
+  const linhas = tarefas
+    .map(t => ({ ...t, cliente: nomePorCliente[t.clienteId], atrasada: t.status==='PENDENTE' && diffDays(t.prazo,hoje)>0 }))
+    .filter(t => t.cliente)
+    .filter(t => !busca || `${t.cliente.nome} ${t.cliente.codigo}`.toLowerCase().includes(busca.toLowerCase()))
+    .filter(t => !filtros.status || t.status === filtros.status)
+    .filter(t => !filtros.responsavel || t.responsavel === filtros.responsavel)
+    .filter(t => !filtros.atrasadas || t.atrasada)
+    .sort((a,b)=> (a.status==='PENDENTE'?0:1)-(b.status==='PENDENTE'?0:1) || toDate(a.prazo)-toDate(b.prazo));
+
+  async function concluir(t){ await atualizarDoc('tarefas', t.id, { status:'CONCLUIDA', dataConclusao:new Date().toISOString() }); }
+
+  return (
+    <div className="spage">
+      <div className="toolbar" style={{marginBottom:14}}>
+        <select className="fsel" value={filtros.status} onChange={e=>setFiltros({...filtros,status:e.target.value})}>
+          <option value="">Todos os status</option><option value="PENDENTE">Pendente</option><option value="CONCLUIDA">Concluída</option>
+        </select>
+        <select className="fsel" value={filtros.responsavel} onChange={e=>setFiltros({...filtros,responsavel:e.target.value})}>
+          <option value="">Todos os responsáveis</option>
+          {responsaveisSet.map(r=><option key={r} value={r}>{r}</option>)}
+        </select>
+        <label style={{fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+          <input type="checkbox" checked={filtros.atrasadas} onChange={e=>setFiltros({...filtros,atrasadas:e.target.checked})} /> Só atrasadas
+        </label>
+      </div>
+      <div className="tlist">
+        {linhas.map(t => (
+          <div key={t.id} className={`titem ${t.atrasada?'ov2':''}`}>
+            {podeEditar(usuario) && t.status==='PENDENTE' && <button className="tcheck" onClick={()=>concluir(t)}></button>}
+            <div>
+              <div style={{fontWeight:500}}>{t.descricao}</div>
+              <div style={{color:'var(--t2)'}}>{t.cliente.nome} ({t.cliente.codigo}) · {t.responsavel} · prazo {fmtDate(t.prazo)}{t.atrasada?` · ⚠️ atrasada há ${diffDays(t.prazo,hoje)}d`:''}</div>
+            </div>
+            <span className="badge b-b" style={{marginLeft:'auto'}}>{t.status==='CONCLUIDA'?'Concluída':'Pendente'}</span>
+          </div>
+        ))}
+        {linhas.length===0 && <div className="empty">Nenhuma tarefa encontrada.</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+   DASHBOARD FINANCEIRO (itens 14-16 do pedido).
+   =================================================================== */
+function BarChart({ dados, cor }){
+  const max = Math.max(1, ...dados.map(d=>d.valor));
+  return (
+    <div className="bar-chart">
+      {dados.map((d,i) => (
+        <div className="bg" key={i}>
+          <div className="bval">{d.valor>=1000 ? `${(d.valor/1000).toFixed(1)}k` : Math.round(d.valor)}</div>
+          <div className="bar" style={{height:`${Math.max(3,(d.valor/max)*90)}px`, background: cor||'var(--green)'}} />
+          <div className="blbl">{d.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ultimosMeses(n){
+  const hoje = hojeSemHora();
+  const arr = [];
+  for (let i=n-1;i>=0;i--) {
+    const d = addMonths(new Date(hoje.getFullYear(), hoje.getMonth(), 1), -i);
+    arr.push({ competencia: competenciaDe(d), label: d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','') });
+  }
+  return arr;
+}
+
+function DashboardView({ clientes, cobrancas, config, usuario }){
+  const hoje = hojeSemHora();
+  const [competencia, setCompetencia] = useState(competenciaDe(hoje));
+  const [carteiraFiltro, setCarteiraFiltro] = useState('');
+  const [gerando, setGerando] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const carteiras = config.carteiras || CARTEIRAS_PADRAO;
+  const nomePorCliente = Object.fromEntries(clientes.map(c=>[c.id,c]));
+  const pertenceAoFiltro = c => !carteiraFiltro || nomePorCliente[c.clienteId]?.carteira === carteiraFiltro;
+
+  // Item 2 da ata: filtro por mês/ano e por carteira ("visão geral" = sem filtro).
+  const doMes = cobrancas.filter(c => c.competencia === competencia && pertenceAoFiltro(c));
+  const [anoComp, mesComp] = competencia.split('-').map(Number);
+  const competenciaAnterior = competenciaDe(new Date(anoComp, mesComp-2, 1));
+  const doMesAnterior = cobrancas.filter(c => c.competencia === competenciaAnterior && pertenceAoFiltro(c));
+
+  function totais(lista){
+    const receita = lista.reduce((s,c)=>s+Number(c.valor),0);
+    const recebido = lista.filter(c=>c.dataPagamento).reduce((s,c)=>s+Number(c.valor),0);
+    const vencido = lista.filter(c=>!c.dataPagamento && diffDays(c.vencimento,hoje)>0).reduce((s,c)=>s+Number(c.valor),0);
+    const emAberto = lista.filter(c=>!c.dataPagamento && diffDays(c.vencimento,hoje)<=0).reduce((s,c)=>s+Number(c.valor),0);
+    return { receita, recebido, vencido, emAberto };
+  }
+  const atual = totais(doMes);
+  const anterior = totais(doMesAnterior);
+  const inadimplente = atual.vencido;
+  const percInadimplencia = atual.receita>0 ? (inadimplente/atual.receita*100) : 0;
+  function comparativo(a, b){ if (!b) return null; const d = a-b; const pct = b!==0 ? (d/b*100) : (a>0?100:0); return { d, pct }; }
+
+  // "Valor perdido/deixado de receber" (item 2): soma das cobranças em
+  // aberto de clientes já em Rescisão/Notificação/Jurídico — dinheiro
+  // que dificilmente volta, olhando a base toda (não só o mês).
+  const clientesPerdidos = clientes.filter(c => ['RESCISAO','NOTIFICACAO','JURIDICO'].includes(c.etapaAtual) && pertenceAoFiltro({clienteId:c.id}));
+  const idsPerdidos = new Set(clientesPerdidos.map(c=>c.id));
+  const valorPerdido = cobrancas.filter(c => idsPerdidos.has(c.clienteId) && !c.dataPagamento).reduce((s,c)=>s+Number(c.valor),0);
+
+  const porCarteira = carteiras.map(cart => {
+    const cobsCarteira = cobrancas.filter(c => c.competencia===competencia && nomePorCliente[c.clienteId]?.carteira === cart);
+    const t = totais(cobsCarteira);
+    return { carteira:cart, receita:t.receita, recebido:t.recebido, vencido:t.vencido, inadimplente:t.vencido, pct: t.receita>0?(t.vencido/t.receita*100):0 };
+  });
+  const totalCarteiras = porCarteira.reduce((acc,c)=>({ receita:acc.receita+c.receita, recebido:acc.recebido+c.recebido, vencido:acc.vencido+c.vencido }), {receita:0,recebido:0,vencido:0});
+
+  const meses = ultimosMeses(6);
+  const inadimplenciaMensal = meses.map(m => {
+    const cobs = cobrancas.filter(c=>c.competencia===m.competencia && pertenceAoFiltro(c));
+    const fat = cobs.reduce((s,c)=>s+Number(c.valor),0);
+    const receb = cobs.filter(c=>c.dataPagamento).reduce((s,c)=>s+Number(c.valor),0);
+    return { label:m.label, valor: Math.max(0, fat-receb) };
+  });
+  let acumulado = 0;
+  const inadimplenciaAcumulada = inadimplenciaMensal.map(m => { acumulado += m.valor; return { label:m.label, valor:acumulado }; });
+  const receitaMensal = meses.map(m => ({ label:m.label, valor: cobrancas.filter(c=>c.competencia===m.competencia && pertenceAoFiltro(c)).reduce((s,c)=>s+Number(c.valor),0) }));
+  const recebidoMensal = meses.map(m => ({ label:m.label, valor: cobrancas.filter(c=>c.competencia===m.competencia && c.dataPagamento && pertenceAoFiltro(c)).reduce((s,c)=>s+Number(c.valor),0) }));
+
+  async function gerar(){
+    setGerando(true);
+    const n = await gerarCobrancasRecorrentes(clientes, cobrancas, usuario.nome);
+    setMsg(n>0 ? `${n} cobrança(s) recorrente(s) gerada(s).` : 'Nenhuma cobrança nova pra gerar agora.');
+    setGerando(false);
+    setTimeout(()=>setMsg(''), 4000);
+  }
+
+  function Delta({ cmp }){
+    if (!cmp) return null;
+    const bom = cmp.d <= 0;
+    return <div className="kpi-s" style={{color: bom?'var(--green)':'var(--red)'}}>{cmp.d>=0?'▲':'▼'} {Math.abs(cmp.pct).toFixed(1)}% vs {competenciaAnterior}</div>;
+  }
+
+  return (
+    <div className="dash">
+      <div className="toolbar" style={{marginBottom:14,padding:0}}>
+        <label className="fl" style={{margin:0}}>Competência:</label>
+        <input className="fsel" type="month" value={competencia} onChange={e=>setCompetencia(e.target.value)} />
+        <select className="fsel" value={carteiraFiltro} onChange={e=>setCarteiraFiltro(e.target.value)}>
+          <option value="">Visão geral (todas as carteiras)</option>
+          {carteiras.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <div style={{marginLeft:'auto'}}>
+          {podeEditar(usuario) && <button className="btn btn-s btn-sm" onClick={gerar} disabled={gerando}>{gerando?'Gerando...':'Gerar cobranças recorrentes pendentes'}</button>}
+        </div>
+      </div>
+      {msg && <div className="badge b-b" style={{display:'block',marginBottom:12,padding:'6px 10px'}}>{msg}</div>}
+
+      <div className="kgrid">
+        <div className="kpi b"><div className="kpi-l">Receita de mensalidades</div><div className="kpi-v">{fmtMoney(atual.receita)}</div><Delta cmp={comparativo(atual.receita, anterior.receita)} /></div>
+        <div className="kpi g"><div className="kpi-l">Recebido</div><div className="kpi-v">{fmtMoney(atual.recebido)}</div><Delta cmp={comparativo(atual.recebido, anterior.recebido)} /></div>
+        <div className="kpi o"><div className="kpi-l">Em aberto</div><div className="kpi-v">{fmtMoney(atual.emAberto)}</div></div>
+        <div className="kpi r"><div className="kpi-l">Vencido</div><div className="kpi-v">{fmtMoney(atual.vencido)}</div><Delta cmp={comparativo(atual.vencido, anterior.vencido)} /></div>
+        <div className="kpi r"><div className="kpi-l">Inadimplente</div><div className="kpi-v">{fmtMoney(inadimplente)}</div></div>
+        <div className="kpi p"><div className="kpi-l">% Inadimplência</div><div className="kpi-v">{percInadimplencia.toFixed(1)}%</div></div>
+        <div className="kpi p"><div className="kpi-l">Perdido (Rescisão/Notif./Jurídico)</div><div className="kpi-v">{fmtMoney(valorPerdido)}</div><div className="kpi-s">{clientesPerdidos.length} cliente(s)</div></div>
+      </div>
+
+      <div className="cc" style={{marginBottom:16}}>
+        <div className="ct">Inadimplência por carteira</div>
+        <table className="tbl">
+          <thead><tr><th>Carteira</th><th>Receita</th><th>Recebido</th><th>Vencido</th><th>Inadimplente</th><th>%</th></tr></thead>
+          <tbody>
+            {porCarteira.map(c => (
+              <tr key={c.carteira}><td>{c.carteira}</td><td>{fmtMoney(c.receita)}</td><td>{fmtMoney(c.recebido)}</td><td>{fmtMoney(c.vencido)}</td><td>{fmtMoney(c.inadimplente)}</td><td>{c.pct.toFixed(1)}%</td></tr>
+            ))}
+            <tr style={{fontWeight:700,background:'var(--body)'}}>
+              <td>Total</td><td>{fmtMoney(totalCarteiras.receita)}</td><td>{fmtMoney(totalCarteiras.recebido)}</td><td>{fmtMoney(totalCarteiras.vencido)}</td><td>{fmtMoney(totalCarteiras.vencido)}</td>
+              <td>{totalCarteiras.receita>0?(totalCarteiras.vencido/totalCarteiras.receita*100).toFixed(1):'0.0'}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="cgrid">
+        <div className="cc"><div className="ct">Inadimplência mensal</div><BarChart dados={inadimplenciaMensal} cor="var(--red)" /></div>
+        <div className="cc"><div className="ct">Inadimplência acumulada</div><BarChart dados={inadimplenciaAcumulada} cor="var(--orange)" /></div>
+        <div className="cc"><div className="ct">Inadimplência por carteira (mês atual)</div><BarChart dados={porCarteira.map(c=>({label:c.carteira,valor:c.vencido}))} cor="var(--purple)" /></div>
+        <div className="cc"><div className="ct">Receita de mensalidades</div><BarChart dados={receitaMensal} cor="var(--blue)" /></div>
+      </div>
+      <div className="cc">
+        <div className="ct">Recebido × Vencido (últimos 6 meses)</div>
+        <div style={{display:'flex',gap:20}}>
+          <div style={{flex:1}}><div style={{fontSize:11,color:'var(--t2)',marginBottom:4}}>Recebido</div><BarChart dados={recebidoMensal} cor="var(--green)" /></div>
+          <div style={{flex:1}}><div style={{fontSize:11,color:'var(--t2)',marginBottom:4}}>Vencido</div><BarChart dados={inadimplenciaMensal} cor="var(--red)" /></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+   CONFIGURAÇÕES — responsáveis por etapa (item 9, editável, nunca
+   hardcoded), carteiras e usuários/permissões (item 22).
+   =================================================================== */
+function ConfiguracoesView({ config, usuarios }){
+  const [responsaveis, setResponsaveis] = useState(config.responsaveis || RESPONSAVEIS_PADRAO);
+  const [carteiras, setCarteiras] = useState((config.carteiras || CARTEIRAS_PADRAO).join(', '));
+  const [novaCarteira, setNovaCarteira] = useState('');
+  const [novoUsuario, setNovoUsuario] = useState({ nome:'', email:'', senha:'', perfil:'OPERACIONAL' });
+  const [criando, setCriando] = useState(false);
+  const [erroUsuario, setErroUsuario] = useState('');
+
+  async function salvarResponsaveis(){ await salvarConfig({ responsaveis }); }
+  async function salvarCarteiras(){ await salvarConfig({ carteiras: carteiras.split(',').map(s=>s.trim()).filter(Boolean) }); }
+
+  async function criarUsuario(){
+    if (!novoUsuario.nome.trim()) return;
+    setErroUsuario('');
+    if (!firebaseOk) {
+      // Modo local: sem senha, mesmo comportamento simples de sempre.
+      await criarDoc('usuarios', { nome: novoUsuario.nome, perfil: novoUsuario.perfil, criadoEm: new Date().toISOString() });
+      setNovoUsuario({ nome:'', email:'', senha:'', perfil:'OPERACIONAL' });
+      return;
+    }
+    // Modo Firebase: cria a conta de autenticação (e-mail/senha) num app
+    // secundário — pra não trocar a sessão de quem está logado agora —
+    // e grava o perfil (nome/perfil) usando a conexão principal, que
+    // continua autenticada como o administrador.
+    if (!novoUsuario.email.trim() || novoUsuario.senha.length < 6) {
+      setErroUsuario('Preencha e-mail e uma senha de pelo menos 6 caracteres.');
+      return;
+    }
+    setCriando(true);
+    try {
+      const cred = await authSecundario.createUserWithEmailAndPassword(novoUsuario.email.trim(), novoUsuario.senha);
+      await db.collection('usuarios').doc(cred.user.uid).set({
+        nome: novoUsuario.nome, email: novoUsuario.email.trim(), perfil: novoUsuario.perfil, criadoEm: new Date().toISOString(),
+      });
+      await authSecundario.signOut(); // limpa a sessão do app secundário, não afeta a sua
+      setNovoUsuario({ nome:'', email:'', senha:'', perfil:'OPERACIONAL' });
+    } catch (err) {
+      setErroUsuario(mensagemErroAuth(err));
+    } finally {
+      setCriando(false);
+    }
+  }
+
+  async function removerUsuario(id){
+    // Só remove o PERFIL (usuarios/{id}) — sem um back-end (Admin SDK),
+    // o app não consegue apagar a conta de autenticação de outra pessoa
+    // pelo navegador. Sem o perfil, a próxima tentativa de login dessa
+    // pessoa é bloqueada automaticamente (ver onAuthStateChanged no App).
+    await excluirDoc('usuarios', id);
+  }
+
+  return (
+    <div className="spage">
+      <div className="scard">
+        <div className="ct">Responsáveis por etapa (item 9)</div>
+        <p style={{fontSize:12,color:'var(--t2)',marginBottom:12}}>Editável a qualquer momento — nada aqui fica travado no código.</p>
+        <div className="fr">
+          {ETAPAS.filter(e=>e.key!=='REGULARIZADO').map(e => (
+            <div className="fg" key={e.key}>
+              <label className="fl">{e.label}</label>
+              <input className="fi" value={responsaveis[e.key]||''} onChange={ev=>setResponsaveis({...responsaveis,[e.key]:ev.target.value})} />
+            </div>
+          ))}
+        </div>
+        <button className="btn btn-g btn-sm" onClick={salvarResponsaveis}>Salvar responsáveis</button>
+      </div>
+
+      <div className="scard">
+        <div className="ct">Carteiras / equipes</div>
+        <div className="fg"><label className="fl">Separadas por vírgula</label><input className="fi" value={carteiras} onChange={e=>setCarteiras(e.target.value)} /></div>
+        <button className="btn btn-g btn-sm" onClick={salvarCarteiras}>Salvar carteiras</button>
+      </div>
+
+      <div className="scard">
+        <div className="ct">Usuários e permissões (item 22)</div>
+        {!firebaseOk && (
+          <p style={{fontSize:12,color:'var(--t2)',marginBottom:12}}>Modo local: sem senha (só pra testar). No modo Firebase, cada usuário tem e-mail e senha de verdade.</p>
+        )}
+        <table className="tbl" style={{marginBottom:14}}>
+          <thead><tr><th>Nome</th>{firebaseOk && <th>E-mail</th>}<th>Perfil</th><th></th></tr></thead>
+          <tbody>
+            {usuarios.map(u => (
+              <tr key={u.id}><td>{u.nome}</td>{firebaseOk && <td>{u.email || '—'}</td>}<td>{PERFIS[u.perfil]}</td>
+                <td><button className="btn btn-s btn-xs" onClick={()=>removerUsuario(u.id)}>Remover</button></td></tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="fr">
+          <div className="fg"><label className="fl">Nome</label><input className="fi" value={novoUsuario.nome} onChange={e=>setNovoUsuario({...novoUsuario,nome:e.target.value})} /></div>
+          {firebaseOk && (
+            <>
+              <div className="fg"><label className="fl">E-mail</label><input className="fi" type="email" value={novoUsuario.email} onChange={e=>setNovoUsuario({...novoUsuario,email:e.target.value})} /></div>
+              <div className="fg"><label className="fl">Senha (mín. 6 caracteres)</label><input className="fi" type="password" value={novoUsuario.senha} onChange={e=>setNovoUsuario({...novoUsuario,senha:e.target.value})} /></div>
+            </>
+          )}
+          <div className="fg"><label className="fl">Perfil</label>
+            <select className="fs" value={novoUsuario.perfil} onChange={e=>setNovoUsuario({...novoUsuario,perfil:e.target.value})}>
+              {Object.entries(PERFIS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+        </div>
+        {erroUsuario && <p style={{fontSize:12,color:'var(--red)',marginBottom:8}}>{erroUsuario}</p>}
+        <button className="btn btn-g btn-sm" onClick={criarUsuario} disabled={criando}>{criando?'Criando...':'Adicionar usuário'}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+   MANUAL — guia de uso dentro do próprio sistema, escrito pra quem vai
+   usar no dia a dia (Duda/Larissa), não pra quem programou.
+   =================================================================== */
+const MANUAL_SECOES = [
+  { id:'visao-geral', titulo:'Visão geral' },
+  { id:'kanban', titulo:'CRM (Kanban)' },
+  { id:'clientes', titulo:'Clientes' },
+  { id:'cobrancas', titulo:'Cobranças' },
+  { id:'tarefas', titulo:'Tarefas' },
+  { id:'dashboard', titulo:'Dashboard' },
+  { id:'config', titulo:'Configurações' },
+  { id:'dia-a-dia', titulo:'Rotina do dia a dia' },
+  { id:'duvidas', titulo:'Dúvidas frequentes' },
+];
+
+function ManualView(){
+  const [ativo, setAtivo] = useState('visao-geral');
+  const contentRef = useRef(null);
+
+  function irPara(id){
+    setAtivo(id);
+    const el = window.document.getElementById('man-'+id);
+    if (!el || !contentRef.current) return;
+    const topo = el.offsetTop - 12;
+    if (typeof contentRef.current.scrollTo === 'function') contentRef.current.scrollTo({ top: topo, behavior: 'smooth' });
+    else contentRef.current.scrollTop = topo;
+  }
+
+  return (
+    <div className="man-wrap">
+      <div className="man-toc">
+        {MANUAL_SECOES.map(s => (
+          <a key={s.id} className={ativo===s.id?'ativo':''} onClick={()=>irPara(s.id)}>{s.titulo}</a>
+        ))}
+      </div>
+      <div className="man-content" ref={contentRef}>
+
+        <div className="man-sec" id="man-visao-geral">
+          <h2>Visão geral</h2>
+          <p className="man-sub">O que é este sistema e como ele se encaixa no dia a dia da cobrança.</p>
+          <p>O <b>CRM Financeiro</b> serve pra acompanhar as mensalidades dos clientes e o processo de cobrança de quem está atrasado, do início ao fim — desde o lembrete antes do vencimento até a rescisão, notificação extrajudicial ou jurídico, se chegar nesse ponto.</p>
+          <p>Ele tem 6 áreas, no menu à esquerda:</p>
+          <ul>
+            <li><b>CRM (Kanban)</b> — o painel principal, com um cartão pra cada cliente em atraso, organizado por etapa da cobrança.</li>
+            <li><b>Clientes</b> — cadastro de todos os clientes (em dia ou não).</li>
+            <li><b>Cobranças</b> — todas as cobranças lançadas, de todo mundo, numa lista só.</li>
+            <li><b>Tarefas</b> — lembretes de ação (ligar, mandar mensagem, etc.), automáticos ou criados na mão.</li>
+            <li><b>Dashboard</b> — números e gráficos: quanto está sendo recebido, quanto está em atraso, etc.</li>
+            <li><b>Configurações</b> — só pra Administrador: responsáveis por etapa, carteiras, usuários.</li>
+          </ul>
+          <div className="man-tip">💡 O sistema salva tudo automaticamente, na hora. Não existe botão de "salvar tudo" no final — cada campo salva sozinho quando você confirma ele.</div>
+        </div>
+
+        <div className="man-sec" id="man-kanban">
+          <h2>CRM (Kanban)</h2>
+          <p className="man-sub">O coração do sistema: onde cada cliente atrasado aparece e avança sozinho.</p>
+          <h3>Como funciona o funil</h3>
+          <p>Cada cliente com uma cobrança vencida (ou perto de vencer) aparece como um <b>cartão</b>, numa das colunas: D-7, D-1, D0, D+1, D+7, D+10, D+15, D+20, Rescisão, Notificação, Jurídico. O nome da coluna é a quantidade de dias antes/depois do vencimento.</p>
+          <div className="man-step"><b>O cliente muda de coluna sozinho</b>, conforme os dias passam — ninguém precisa arrastar nada no dia a dia. O sistema confere isso automaticamente quando alguém abre o Kanban, e também dá pra forçar clicando em <span className="man-kbd">🔄 Sincronizar etapas com a data de hoje</span>.</div>
+          <p>Quando o cliente paga a cobrança em aberto, ele some das colunas de atraso e aparece na área <b>"Regularizados"</b>, embaixo do quadro.</p>
+          <h3>Mexendo manualmente</h3>
+          <p>Dá pra arrastar um cartão pra outra coluna, ou abrir o cliente e trocar a etapa no seletor "Etapa do funil". Quando você faz isso na mão, o cliente fica <b>🔒 travado manualmente</b> — o sistema para de mover ele sozinho, pra não brigar com a sua decisão. Pra devolver ao automático, é só clicar em "Devolver ao automático" na ficha do cliente.</p>
+          <div className="man-tip">💡 Use a trava manual pra casos especiais: cliente negociando, caso jurídico específico, etc. Pro dia a dia normal, deixe no automático.</div>
+          <h3>O que cada cartão mostra</h3>
+          <ul>
+            <li>Nome e código do cliente, carteira</li>
+            <li>Valor da cobrança em aberto e data de vencimento</li>
+            <li>Responsável pela etapa atual (vem de Configurações)</li>
+            <li>Próxima ação e quando ela vence</li>
+            <li>Tag <b>"Em atraso"</b> (menos de 30 dias) ou <b>"Inadimplente"</b> (30 dias ou mais)</li>
+            <li>Borda vermelha e aviso ⚠️ quando alguma tarefa dele está atrasada</li>
+          </ul>
+          <h3>Filtros</h3>
+          <p>No topo do Kanban dá pra filtrar por carteira, responsável, status (em dia / atraso / inadimplente) e "com tarefa atrasada" — combine quantos quiser.</p>
+          <h3>Exceção: honorário de êxito</h3>
+          <p>Cliente cadastrado com tipo de cobrança <b>"Honorários de êxito"</b> nunca entra nesse funil de mensalidade — ele é uma cobrança diferente, sem prazo de rescisão automático.</p>
+        </div>
+
+        <div className="man-sec" id="man-clientes">
+          <h2>Clientes</h2>
+          <p className="man-sub">Cadastro de todo mundo — em dia, atrasado ou já regularizado.</p>
+          <h3>Cadastrar um cliente na mão</h3>
+          <ol>
+            <li>Clique em <b>+ Novo cliente</b></li>
+            <li>Preencha Código (obrigatório, é o identificador único — não pode repetir), Nome, Carteira e Tipo de cobrança</li>
+            <li>Salvar</li>
+          </ol>
+          <p>Depois de criado, abra o cliente pra configurar a mensalidade dele — isso fica dentro da ficha, na aba <b>Cobrança</b> (veja a seção "Cobranças" abaixo).</p>
+          <h3>Importar vários clientes de uma vez (CSV)</h3>
+          <ol>
+            <li>Clique em <b>Importar CSV</b></li>
+            <li>Cole os dados (do Excel, do Asaas, de onde for) — funciona com vírgula ou ponto-e-vírgula separando as colunas</li>
+            <li>Clique em <b>Detectar colunas</b></li>
+            <li>Confira o mapeamento — o sistema tenta adivinhar sozinho qual coluna é qual, mas confira antes de confirmar</li>
+            <li>Se aparecer aviso de linha com problema (código ou nome faltando, ou código repetido no arquivo), corrija na planilha e cole de novo</li>
+            <li><b>Confirmar importação</b></li>
+          </ol>
+          <div className="man-warn">⚠️ O <b>código</b> é o identificador único. Se você reimportar um arquivo com um código que já existe, o sistema <b>atualiza</b> o cliente em vez de duplicar — e campos deixados em branco na planilha não apagam o que já estava cadastrado.</div>
+          <h3>Cliente inativo (saiu da base)</h3>
+          <p>Quando um cliente cancela e sai da base, abra a ficha dele → aba Informações → <b>Encerrar cliente</b>. Isso desativa a cobrança recorrente dele (para de gerar cobrança nova todo mês) e ele some do Kanban. Pra ver clientes inativos na lista, marque "Mostrar inativos". Dá pra reativar a qualquer momento.</p>
+        </div>
+
+        <div className="man-sec" id="man-cobrancas">
+          <h2>Cobranças</h2>
+          <p className="man-sub">Onde ficam os valores e vencimentos de cada cliente.</p>
+          <h3>Cobrança recorrente (mensalidade automática)</h3>
+          <p>Abra o cliente → aba <b>Cobrança</b> → seção "Cobrança recorrente": marque Ativa, informe valor, dia de vencimento e periodicidade (geralmente Mensal). Salve. A partir daí, o sistema gera a cobrança daquele mês sozinho, sempre que alguém abre o app — não precisa lançar mês a mês na mão.</p>
+          <h3>Cobrança avulsa (pontual)</h3>
+          <p>Na mesma aba Cobrança, seção "Lançar cobrança avulsa": informe valor e vencimento, clique em Lançar. Use pra cobranças que não se repetem todo mês.</p>
+          <h3>Marcar como paga</h3>
+          <p>Tanto na ficha do cliente quanto na lista geral de Cobranças, clique em <b>Marcar como paga</b>. Se marcar errado, dá pra <b>Estornar</b> na ficha do cliente.</p>
+          <h3>Observações por cobrança</h3>
+          <p>Na lista de Cobranças (e também na ficha do cliente), cada cobrança tem uma coluna de observação — clique no ✏️, escreva e Salvar. Serve pra anotar coisas tipo "cliente disse que paga dia 5" sem precisar abrir a ficha inteira.</p>
+          <h3>Filtrar por data</h3>
+          <p>Na lista de Cobranças, use os campos "Vencimento de" / "até" pra ver só as cobranças de um período — combina com o filtro de status também.</p>
+          <h3>Importar cobranças em massa (CSV)</h3>
+          <p>Diferente da importação de Clientes, esta cria <b>cobranças reais</b>, com valor e data verdadeiros — direto na tela de Cobranças, botão <b>Importar cobranças (CSV)</b>.</p>
+          <ol>
+            <li>Cole os dados — colunas esperadas: código, valor, vencimento (formato DD/MM/AAAA), e opcionalmente nome, carteira e tipo</li>
+            <li>Detectar colunas → confira o mapeamento</li>
+            <li>Confirmar importação</li>
+          </ol>
+          <ul>
+            <li>Se o código ainda não for um cliente cadastrado, o sistema <b>cadastra ele sozinho</b></li>
+            <li>Várias linhas com o mesmo código são normais (parcelas, cobranças diferentes do mesmo cliente)</li>
+            <li>Cliente com tipo "Cobrança Recorrente" na planilha já sai com a recorrência mensal configurada automaticamente</li>
+            <li>Reimportar o mesmo arquivo <b>não duplica</b> — o sistema reconhece o que já foi importado</li>
+          </ul>
+        </div>
+
+        <div className="man-sec" id="man-tarefas">
+          <h2>Tarefas</h2>
+          <p className="man-sub">Os lembretes de ação — o que fazer, com quem, até quando.</p>
+          <p>Toda vez que um cliente muda de etapa no funil (D-7, D+7, etc.), o sistema cria uma tarefa automática pro responsável daquela etapa — por exemplo, "Realizar comunicação de acompanhamento da inadimplência" quando entra em D+7.</p>
+          <p>Dá pra criar tarefas na mão também, tanto pela tela geral de <b>Tarefas</b> quanto de dentro da ficha do cliente (aba Tarefas).</p>
+          <p>Marque como concluída clicando na bolinha ao lado da tarefa. Tarefa vencida e ainda pendente aparece destacada em vermelho, com quantos dias de atraso.</p>
+          <p>Na tela geral de Tarefas dá pra filtrar por status, responsável e "só atrasadas".</p>
+        </div>
+
+        <div className="man-sec" id="man-dashboard">
+          <h2>Dashboard</h2>
+          <p className="man-sub">Os números: quanto entra, quanto está atrasado, por carteira.</p>
+          <ul>
+            <li><b>Receita de mensalidades</b> — total previsto no mês</li>
+            <li><b>Recebido</b> — o que já foi pago</li>
+            <li><b>Em aberto</b> — ainda não venceu</li>
+            <li><b>Vencido</b> — já passou do vencimento e não foi pago</li>
+            <li><b>Inadimplente</b> — mesmo valor do vencido, olhando pro mês selecionado</li>
+            <li><b>% Inadimplência</b> — inadimplente ÷ receita prevista</li>
+            <li><b>Perdido</b> — soma do que está em aberto de clientes já em Rescisão/Notificação/Jurídico (dinheiro que dificilmente volta)</li>
+          </ul>
+          <p>Use os seletores no topo pra trocar o <b>mês/ano</b> e filtrar por <b>carteira</b> (ou deixar "Visão geral" pra ver todas juntas). Os cards mostram a variação comparado ao mês anterior.</p>
+          <p>A tabela "Inadimplência por carteira" e os gráficos de baixo (mensal, acumulada, por carteira, receita, recebido×vencido) sempre olham pros últimos 6 meses.</p>
+        </div>
+
+        <div className="man-sec" id="man-config">
+          <h2>Configurações</h2>
+          <p className="man-sub">Só Administrador enxerga esta tela.</p>
+          <h3>Responsáveis por etapa</h3>
+          <p>Define quem é o responsável padrão de cada etapa do funil (D-7, D-1, etc.) — isso é o que aparece nos cartões e nas tarefas automáticas. Dá pra mudar a qualquer momento.</p>
+          <h3>Carteiras</h3>
+          <p>Lista de carteiras/equipes (ex.: Celeste, Êxitos, Delta), separadas por vírgula.</p>
+          <h3>Usuários e permissões</h3>
+          <p>Cadastre aqui todo mundo que vai usar o sistema — nome, e-mail e senha, e o perfil de acesso:</p>
+          <ul>
+            <li><b>Administrador</b> — acesso total, inclusive Configurações</li>
+            <li><b>Financeiro</b> — acesso completo ao dia a dia (CRM, clientes, cobranças, tarefas, dashboard), menos Configurações</li>
+            <li><b>Responsável operacional</b> — mesma coisa, pensado pra quem cuida só de uma parte da operação</li>
+            <li><b>Visualização</b> — só consulta, não edita nada</li>
+          </ul>
+          <div className="man-tip">💡 Sempre crie usuários por aqui, nunca direto no Firebase — criar direto lá não gera o perfil de acesso, e a pessoa não consegue entrar.</div>
+        </div>
+
+        <div className="man-sec" id="man-dia-a-dia">
+          <h2>Rotina do dia a dia</h2>
+          <p className="man-sub">Sugestão de como usar o sistema numa rotina normal.</p>
+          <div className="man-step"><b>1. Abra o Kanban.</b> Isso já sincroniza as etapas e gera as cobranças recorrentes do mês sozinho.</div>
+          <div className="man-step"><b>2. Olhe as colunas dos seus responsáveis</b> (filtro "Responsável") e os cartões com borda vermelha (tarefa atrasada).</div>
+          <div className="man-step"><b>3. Abra a tela de Tarefas, filtre "Só atrasadas"</b> pra ver tudo que está pendente de todo mundo, num lugar só.</div>
+          <div className="man-step"><b>4. Ao fazer contato com um cliente, marque a tarefa como concluída</b> e, se quiser registrar algo, use a observação da cobrança ou a aba Observações da ficha do cliente.</div>
+          <div className="man-step"><b>5. Quando um cliente paga</b>, abra a ficha dele → aba Cobrança → Marcar como paga. Ele sai do funil sozinho e aparece em Regularizados.</div>
+          <div className="man-step"><b>6. De vez em quando, dê uma olhada no Dashboard</b> pra ver o panorama geral e passar pro gestor.</div>
+        </div>
+
+        <div className="man-sec" id="man-duvidas">
+          <h2>Dúvidas frequentes</h2>
+          <h3>Um cliente devia ter avançado de etapa e não avançou.</h3>
+          <p>Clique em "🔄 Sincronizar etapas com a data de hoje" no topo do Kanban. A sincronização roda sozinha quando alguém abre o sistema, mas às vezes ajuda forçar.</p>
+          <h3>Mexi na etapa de um cliente e agora ele não se mexe mais sozinho.</h3>
+          <p>Ele está com a trava manual (🔒) ligada. Abra a ficha dele e clique em "Devolver ao automático".</p>
+          <h3>Cadastrei um cliente errado, como apago?</h3>
+          <p>Hoje o sistema não tem exclusão de cliente pela tela (pra evitar apagar histórico por engano). Se precisar, use "Encerrar cliente" pra tirar ele de circulação, ou peça ajuda técnica pra remover direto no banco.</p>
+          <h3>Esqueci minha senha.</h3>
+          <p>Na tela de login, clique em "Esqueci minha senha" e informe seu e-mail — chega um link de redefinição.</p>
+          <h3>Posso ver o sistema no celular?</h3>
+          <p>Dá pra abrir, mas ele foi pensado pro uso em computador — em telas pequenas alguns quadros ficam apertados.</p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+   APP RAIZ
+   =================================================================== */
+const NOMES_VIEW = { kanban:'CRM de Inadimplência', clientes:'Clientes', cobrancas:'Cobranças', tarefas:'Tarefas', dashboard:'Dashboard Financeiro', config:'Configurações', manual:'Manual do Sistema' };
+
+function App(){
+  const [usuario, setUsuario] = useState(null);
+  const [authCarregando, setAuthCarregando] = useState(firebaseOk); // no modo Firebase, espera o onAuthStateChanged antes de decidir
+  const [view, setView] = useState('kanban');
+  const [busca, setBusca] = useState('');
+  const [clienteAberto, setClienteAberto] = useState(null);
+
+  const usuarios = useCollection('usuarios');
+  const clientes = useCollection('clientes');
+  const cobrancas = useCollection('cobrancas');
+  const tarefas = useCollection('tarefas');
+  const historico = useCollection('historico');
+  const [configDoc, setConfigDoc] = useState({});
+
+  useEffect(() => {
+    if (firebaseOk && db) {
+      const unsub = db.collection('config').doc('geral').onSnapshot(d => setConfigDoc(d.data() || {}));
+      return unsub;
+    }
+    const ler = () => setConfigDoc((localDB().configGeral) || {});
+    ler();
+    window.addEventListener('local-db-changed', ler);
+    return () => window.removeEventListener('local-db-changed', ler);
+  }, []);
+
+  // Modo Firebase: a sessão é gerenciada pelo próprio Firebase Auth (item
+  // "proteção" — login de verdade com senha), não mais por localStorage.
+  // Quando o auth muda (login/logout/refresh da página), busca o perfil
+  // (nome/perfil) em usuarios/{uid}. Se a conta existe no Auth mas não
+  // tem um perfil correspondente, desloga — ela não deveria ter acesso.
+  useEffect(() => {
+    if (!firebaseOk) return;
+    const unsub = auth.onAuthStateChanged(async (authUser) => {
+      if (!authUser) { setUsuario(null); setAuthCarregando(false); return; }
+      try {
+        const doc = await db.collection('usuarios').doc(authUser.uid).get();
+        if (doc.exists) {
+          setUsuario({ id: authUser.uid, ...doc.data() });
+        } else {
+          await auth.signOut();
+          setUsuario(null);
+        }
+      } finally {
+        setAuthCarregando(false);
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Modo local (sem Firebase): mantém sessão simples em localStorage.
+  useEffect(() => {
+    if (firebaseOk) return;
+    const salvo = localStorage.getItem('crm_financeiro_usuario');
+    if (salvo) {
+      try { setUsuario(JSON.parse(salvo)); } catch(e){}
+    }
+  }, []);
+  useEffect(() => {
+    if (firebaseOk) return;
+    if (usuario) localStorage.setItem('crm_financeiro_usuario', JSON.stringify(usuario));
+  }, [usuario]);
+
+  // Cobranças recorrentes: gera a cobrança do mês corrente sozinho, assim
+  // que alguém com permissão de edição abre o sistema — sem isso, "mês que
+  // vem" só aparecia se alguém lembrasse de clicar no botão do Dashboard.
+  // Roda de novo sempre que a quantidade de clientes ou de cobranças muda
+  // (não a cada detalhe, tipo marcar um pagamento) — é idempotente (só
+  // cria o que ainda falta), então rodar mais de uma vez não duplica nada.
+  useEffect(() => {
+    if (!usuario || !podeEditar(usuario)) return;
+    if (clientes.length === 0) return; // espera os dados carregarem
+    gerarCobrancasRecorrentes(clientes, cobrancas, usuario.nome);
+  }, [usuario, clientes, cobrancas]);
+
+  function entrarDireto(u){ setUsuario(u); }
+  async function sair(){
+    if (firebaseOk) await auth.signOut();
+    else { localStorage.removeItem('crm_financeiro_usuario'); setUsuario(null); }
+  }
+
+  if (authCarregando && !usuario) return <div className="lpage"><div style={{color:'var(--t2)',fontSize:13}}>Carregando...</div></div>;
+  if (!usuario) return <Login usuarios={usuarios} onEntrar={entrarDireto} />;
+
+  const clienteAtual = clienteAberto ? clientes.find(c => c.id === clienteAberto) : null;
+
+  return (
+    <div className="app">
+      <Sidebar view={view} setView={setView} usuario={usuario} onSair={sair} />
+      <div className="main">
+        <Topbar titulo={NOMES_VIEW[view]} busca={busca} setBusca={setBusca} usuario={usuario} />
+        {view==='kanban' && <KanbanView clientes={clientes} cobrancas={cobrancas} tarefas={tarefas} config={configDoc} usuario={usuario} busca={busca} onAbrirCliente={c=>setClienteAberto(c.id)} />}
+        {view==='clientes' && <ClientesView clientes={clientes} cobrancas={cobrancas} tarefas={tarefas} historico={historico} config={configDoc} usuario={usuario} busca={busca} onAbrirCliente={c=>setClienteAberto(c.id)} />}
+        {view==='cobrancas' && <CobrancasView clientes={clientes} cobrancas={cobrancas} usuario={usuario} busca={busca} />}
+        {view==='tarefas' && <TarefasView clientes={clientes} tarefas={tarefas} usuario={usuario} busca={busca} />}
+        {view==='dashboard' && <DashboardView clientes={clientes} cobrancas={cobrancas} config={configDoc} usuario={usuario} />}
+        {view==='config' && ehAdmin(usuario) && <ConfiguracoesView config={configDoc} usuarios={usuarios} />}
+        {view==='manual' && <ManualView />}
+      </div>
+      {clienteAtual && (
+        <ClienteDetalheModal cliente={clienteAtual} cobrancas={cobrancas} tarefas={tarefas} historico={historico} config={configDoc} usuario={usuario} onClose={()=>setClienteAberto(null)} />
+      )}
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>, document.getElementById('root'));
+</script>
+</body>
+</html>
