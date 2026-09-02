@@ -1313,7 +1313,7 @@ function AbaTarefas({ cliente, tarefas, usuario }){
               <button className={`tcheck ${t.status==='CONCLUIDA'?'done':''}`} onClick={()=> t.status==='CONCLUIDA' ? reabrir(t) : concluir(t)}>{t.status==='CONCLUIDA'?'✓':''}</button>
               <div>
                 <div style={{fontWeight:500}}>{t.descricao}</div>
-                <div style={{color:'var(--t2)'}}>{t.responsavel} · prazo {fmtDate(t.prazo)}{t.automatica?' · automática':''}{atrasada?` · ⚠️ atrasada há ${diffDays(t.prazo,hojeSemHora())}d`:''}</div>
+                <div style={{color:'var(--t2)'}}>{t.responsavel} · prazo {fmtDate(t.prazo)}{t.automatica?' · automática':''}{atrasada?` · ⚠️ atrasada há ${diffDays(t.prazo,hojeSemHora())}d`:''}{t.concluidaVia==='observacao'?' · ✅ resolvida via observação':''}</div>
               </div>
               {editar && <button className="btn btn-d btn-xs" style={{marginLeft:'auto'}} onClick={()=>excluirTarefa(t)} title="Excluir tarefa">🗑️</button>}
             </div>
@@ -1357,7 +1357,36 @@ function ClienteDetalheModal({ cliente, cobrancas, tarefas, historico, config, u
   const view = montarVisaoCliente(cliente, cobrancas, tarefas, config.responsaveis||RESPONSAVEIS_PADRAO, hoje);
 
   async function salvarInfo(form){ await atualizarDoc('clientes', cliente.id, form); }
-  async function salvarObs(texto){ await atualizarDoc('clientes', cliente.id, { observacoes: texto }); }
+  // Regra alinhada: registrar uma observação nova é, em si, uma ação de
+  // acompanhamento sobre o cliente. Por isso, ao salvar um texto de
+  // observação diferente do que já estava salvo, o(s) follow-up(s)
+  // automático(s) da ETAPA ATUAL do card (t.etapaOrigem === view.etapaEfetiva)
+  // que estejam atrasados são marcados como concluídos — mesma trilha usada
+  // quando alguém marca uma tarefa como concluída na aba Tarefas, só que
+  // disparada pela observação. Tarefas criadas manualmente
+  // (automatica:false), follow-ups de outras etapas e os que não estão
+  // atrasados nunca são tocados aqui.
+  async function salvarObs(texto){
+    const textoAnterior = (cliente.observacoes || '').trim();
+    const textoNovo = (texto || '').trim();
+    const ehObservacaoNova = textoNovo !== '' && textoNovo !== textoAnterior;
+    await atualizarDoc('clientes', cliente.id, { observacoes: texto });
+    if (!ehObservacaoNova) return;
+    const followUpsAtrasados = tarefas.filter(t =>
+      t.clienteId === cliente.id && t.automatica && t.status === 'PENDENTE' &&
+      t.etapaOrigem === view.etapaEfetiva && diffDays(t.prazo, hoje) > 0
+    );
+    for (const t of followUpsAtrasados) {
+      await atualizarDoc('tarefas', t.id, { status:'CONCLUIDA', dataConclusao:new Date().toISOString(), concluidaVia:'observacao' });
+    }
+    if (followUpsAtrasados.length > 0) {
+      await criarDoc('historico', {
+        clienteId: cliente.id, data: new Date().toISOString(), usuario: usuario.nome,
+        texto: `Observação registrada: "${textoNovo}" — ${followUpsAtrasados.length} follow-up(s) atrasado(s) da etapa ${ETAPA_LABEL[view.etapaEfetiva]||view.etapaEfetiva} tratado(s) e retirado(s) da pendência.`,
+        etapa: view.etapaEfetiva,
+      });
+    }
+  }
   async function atualizarCliente(obj){ await atualizarDoc('clientes', cliente.id, obj); }
 
   const abas = [
@@ -2344,6 +2373,7 @@ function ManualView(){
           <p>Dá pra criar tarefas na mão também, tanto pela tela geral de <b>Tarefas</b> quanto de dentro da ficha do cliente (aba Tarefas).</p>
           <p>Marque como concluída clicando na bolinha ao lado da tarefa. Tarefa vencida e ainda pendente aparece destacada em vermelho, com quantos dias de atraso.</p>
           <p>Na tela geral de Tarefas dá pra filtrar por status, responsável e "só atrasadas".</p>
+          <div className="man-tip">💡 Registrar uma observação nova na aba <b>Observações</b> da ficha do cliente também conta como acompanhamento: se houver follow-up automático atrasado da etapa atual do card, ele é marcado como concluído automaticamente (aparece "resolvida via observação"), some do card e para de contar como atraso. Follow-ups de outras etapas, tarefas manuais e as que não estão atrasadas não são afetados.</div>
         </div>
 
         <div className="man-sec" id="man-dashboard">
