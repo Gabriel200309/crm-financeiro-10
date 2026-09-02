@@ -225,7 +225,7 @@ const ETAPA_CURTO = Object.fromEntries(ETAPAS.map(e=>[e.key,e.curto]));
 const ETAPA_OFFSET = Object.fromEntries(ETAPAS.filter(e=>e.offset!==null).map(e=>[e.key,e.offset]));
 const TAREFA_DESC = Object.fromEntries(ETAPAS.filter(e=>e.desc).map(e=>[e.key,e.desc]));
 const ORDEM_FUNIL = ETAPAS.filter(e=>e.key!=='REGULARIZADO').map(e=>e.key);
-const RESPONSAVEIS_PADRAO = { D_MENOS_7:'Líder', D_MENOS_1:'Financeiro', D0:'Financeiro', D_MAIS_1:'Financeiro', D_MAIS_2:'Líder', D_MAIS_5:'Líder', D_MAIS_7:'Duda', D_MAIS_10:'Duda', D_MAIS_15:'Duda', D_MAIS_20:'Duda', RESCISAO:'Duda', NOTIFICACAO:'Duda', JURIDICO:'Duda' };
+const RESPONSAVEIS_PADRAO = { D_MENOS_7:'Líder', D_MENOS_1:'Financeiro', D0:'Financeiro', D_MAIS_1:'Financeiro', D_MAIS_2:'Líder', D_MAIS_5:'Líder', D_MAIS_7:'Duda', D_MAIS_10:'Duda', D_MAIS_15:'Duda', D_MAIS_20:'Duda', RESCISAO:'Duda', NOTIFICACAO:'Duda', JURIDICO:'Jurídico' };
 const CARTEIRAS_PADRAO = ['Celeste','Êxitos','Delta'];
 const PERFIS = { ADMINISTRADOR:'Administrador', FINANCEIRO:'Financeiro', OPERACIONAL:'Responsável operacional', VISUALIZACAO:'Visualização (somente leitura)' };
 const PERIODICIDADES = { MENSAL:{label:'Mensal',meses:1}, BIMESTRAL:{label:'Bimestral',meses:2}, TRIMESTRAL:{label:'Trimestral',meses:3}, SEMESTRAL:{label:'Semestral',meses:6}, ANUAL:{label:'Anual',meses:12} };
