@@ -92,6 +92,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--body);color:var(--t1);hei
 .kcol{width:250px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
 .chdr{background:#fff;border:1px solid var(--bdr);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
 .ctitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.cresp{font-size:10px;color:var(--green);font-weight:600;margin-top:3px}
 .ccount{background:var(--body);color:var(--t2);font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px}
 .cval{font-size:11px;color:var(--t2);margin-top:2px}
 .clist{display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:calc(100vh - 210px);padding-bottom:4px;min-height:40px;transition:background .15s;border-radius:var(--r)}
@@ -208,6 +209,8 @@ const ETAPAS = [
   { key:'D_MENOS_1', label:'D-1', curto:'D-1', offset:-1, desc:'Cobrança preventiva.' },
   { key:'D0', label:'D0 (vencimento)', curto:'D0', offset:0, desc:'Dia do vencimento.' },
   { key:'D_MAIS_1', label:'D+1', curto:'D+1', offset:1, desc:'Primeira cobrança após vencimento.' },
+  { key:'D_MAIS_2', label:'D+2', curto:'D+2', offset:2, desc:'Acompanhamento do líder após a cobrança inicial do financeiro.' },
+  { key:'D_MAIS_5', label:'D+5', curto:'D+5', offset:5, desc:'Segundo acompanhamento do líder antes da escalada para a Duda.' },
   { key:'D_MAIS_7', label:'D+7', curto:'D+7', offset:7, desc:'Acompanhamento da inadimplência.' },
   { key:'D_MAIS_10', label:'D+10 — Suspensão do suporte', curto:'D+10', offset:10, desc:'Comunicação de suspensão do suporte.' },
   { key:'D_MAIS_15', label:'D+15 — Suspensão das demandas', curto:'D+15', offset:15, desc:'Comunicação de suspensão das demandas.' },
@@ -222,7 +225,7 @@ const ETAPA_CURTO = Object.fromEntries(ETAPAS.map(e=>[e.key,e.curto]));
 const ETAPA_OFFSET = Object.fromEntries(ETAPAS.filter(e=>e.offset!==null).map(e=>[e.key,e.offset]));
 const TAREFA_DESC = Object.fromEntries(ETAPAS.filter(e=>e.desc).map(e=>[e.key,e.desc]));
 const ORDEM_FUNIL = ETAPAS.filter(e=>e.key!=='REGULARIZADO').map(e=>e.key);
-const RESPONSAVEIS_PADRAO = { D_MENOS_7:'Duda', D_MENOS_1:'Larissa', D0:'Larissa', D_MAIS_1:'Larissa', D_MAIS_7:'Duda', D_MAIS_10:'Duda', D_MAIS_15:'Duda', D_MAIS_20:'Duda', RESCISAO:'Duda', NOTIFICACAO:'Duda', JURIDICO:'Duda' };
+const RESPONSAVEIS_PADRAO = { D_MENOS_7:'Líder', D_MENOS_1:'Financeiro', D0:'Financeiro', D_MAIS_1:'Financeiro', D_MAIS_2:'Líder', D_MAIS_5:'Líder', D_MAIS_7:'Duda', D_MAIS_10:'Duda', D_MAIS_15:'Duda', D_MAIS_20:'Duda', RESCISAO:'Duda', NOTIFICACAO:'Duda', JURIDICO:'Duda' };
 const CARTEIRAS_PADRAO = ['Celeste','Êxitos','Delta'];
 const PERFIS = { ADMINISTRADOR:'Administrador', FINANCEIRO:'Financeiro', OPERACIONAL:'Responsável operacional', VISUALIZACAO:'Visualização (somente leitura)' };
 const PERIODICIDADES = { MENSAL:{label:'Mensal',meses:1}, BIMESTRAL:{label:'Bimestral',meses:2}, TRIMESTRAL:{label:'Trimestral',meses:3}, SEMESTRAL:{label:'Semestral',meses:6}, ANUAL:{label:'Anual',meses:12} };
@@ -410,7 +413,7 @@ function tagAutomatica(diasAtraso){
    1: "o sistema deverá controlar automaticamente a evolução do
    cliente conforme os dias de atraso"). A etapa é CALCULADA a partir
    da data de vencimento a cada carregamento — não depende de alguém
-   arrastar o card. D-7→D-1→D0→D+1→D+7→D+10→D+15→D+20→Rescisão
+   arrastar o card. D-7→D-1→D0→D+1→D+2→D+5→D+7→D+10→D+15→D+20→Rescisão
    acontece sozinho. Só passa a ser manual (Notificação/Jurídico/
    Regularizado) quando alguém explicitamente assume o card — aí o
    campo `travaManual` passa a valer e a automação para de mexer nele.
@@ -421,7 +424,9 @@ function etapaAutomaticaPorData(vencimento, hoje){
   if (dias < -1) return 'D_MENOS_7';
   if (dias < 0) return 'D_MENOS_1';
   if (dias === 0) return 'D0';
-  if (dias < 7) return 'D_MAIS_1';
+  if (dias < 2) return 'D_MAIS_1';
+  if (dias < 5) return 'D_MAIS_2';
+  if (dias < 7) return 'D_MAIS_5';
   if (dias < 10) return 'D_MAIS_7';
   if (dias < 15) return 'D_MAIS_10';
   if (dias < 20) return 'D_MAIS_15';
@@ -492,7 +497,7 @@ async function moverEtapaCliente(cliente, cobrancas, novaEtapaBruta, responsavei
 // Devolve o cliente pro piloto automático (destrava).
 async function destravarAutomatico(cliente, usuario){
   await atualizarDoc('clientes', cliente.id, { travaManual: false });
-  await criarDoc('historico', { clienteId: cliente.id, data: new Date().toISOString(), usuario, texto: 'Devolvido ao fluxo automático (D-7 a D+20 calculado por data).', etapa: null });
+  await criarDoc('historico', { clienteId: cliente.id, data: new Date().toISOString(), usuario, texto: 'Devolvido ao fluxo automático (D-7 a D+20, com D+2 e D+5, calculado por data).', etapa: null });
 }
 function ETA_OFF_OR_ZERO(etapa){ return etapa in ETAPA_OFFSET ? ETAPA_OFFSET[etapa] : 0; }
 
@@ -914,6 +919,11 @@ function KanbanCard({ view, arrastavel, onDragStart, onAbrir }){
         <div className="kmeta">vence {fmtDate(view.referencia.vencimento)}{view.diasAtraso>0?` · ${view.diasAtraso}d de atraso`:''}</div>
       )}
       <div className="kmeta">Responsável: {view.responsavelEtapa || '—'}</div>
+      {view.linkChatguru && (
+        <a href={view.linkChatguru} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} className="kmeta" style={{color:'var(--green)',fontWeight:600,display:'inline-block'}}>
+          💬 Abrir conversa no ChatGuru
+        </a>
+      )}
       {view.proximaEtapa && (
         <div className={`ktask ${view.proximaAtrasada?'ot':''}`}>
           Próxima ação: {ETAPA_CURTO[view.proximaEtapa]} {view.proximaData ? `em ${fmtDate(view.proximaData)}` : ''}
@@ -931,18 +941,20 @@ function KanbanCard({ view, arrastavel, onDragStart, onAbrir }){
   );
 }
 
-function KanbanBoard({ visoes, colunas, onMover, onAbrir, arrastavel }){
+function KanbanBoard({ visoes, colunas, onMover, onAbrir, arrastavel, responsaveis }){
   const [colunaSobre, setColunaSobre] = useState(null);
   return (
     <div className="kw">
       {colunas.map(col => {
         const doColuna = visoes.filter(v => v.etapaEfetiva === col.key);
         const total = doColuna.reduce((s,v)=> s + (v.referencia ? Number(v.referencia.valor) : 0), 0);
+        const responsavelColuna = responsaveis ? (responsaveis[col.key] || 'A definir') : null;
         return (
           <div key={col.key} className="kcol">
             <div className="chdr">
               <div>
                 <div className="ctitle">{col.curto}</div>
+                {responsavelColuna && <div className="cresp">Responsável: {responsavelColuna}</div>}
                 {total > 0 && <div className="cval">{fmtMoney(total)}</div>}
               </div>
               <span className="ccount">{doColuna.length}</span>
@@ -1061,7 +1073,7 @@ function KanbanView({ clientes, cobrancas, tarefas, config, usuario, busca, onAb
         {podeEditar(usuario) && <button className="btn btn-s btn-sm" onClick={sincronizarAgora} disabled={sincronizando}>{sincronizando?'Sincronizando...':'🔄 Sincronizar etapas com a data de hoje'}</button>}
         {msgSync && <span className="badge b-b">{msgSync}</span>}
       </div>
-      <KanbanBoard visoes={visoes} colunas={colunasFunil} onMover={mover} onAbrir={onAbrirCliente} arrastavel={podeEditar(usuario)} />
+      <KanbanBoard visoes={visoes} colunas={colunasFunil} onMover={mover} onAbrir={onAbrirCliente} arrastavel={podeEditar(usuario)} responsaveis={responsaveis} />
       {regularizados.length > 0 && (
         <div style={{padding:'0 16px 16px'}}>
           <div className="ct" style={{marginBottom:8}}>Regularizados ({regularizados.length})</div>
@@ -1108,6 +1120,15 @@ function AbaInformacoes({ cliente, config, view, usuario, onSalvar }){
         <div style={{fontSize:13}}>
           {view.etapaEfetiva ? `${ETAPA_LABEL[view.etapaEfetiva]} · responsável ${view.responsavelEtapa}` : 'Em dia — fora do funil'}
         </div>
+      </div>
+      <div className="fg">
+        <label className="fl">Link da conversa no ChatGuru</label>
+        <input className="fi" disabled={!editar} placeholder="https://..." value={form.linkChatguru||''} onChange={e=>campo('linkChatguru',e.target.value)} />
+        {cliente.linkChatguru && (
+          <a href={cliente.linkChatguru} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:'var(--green)',fontWeight:600,display:'inline-block',marginTop:4}}>
+            💬 Abrir conversa no ChatGuru
+          </a>
+        )}
       </div>
       <div className="fr">
         <div className="fg"><label className="fl">Valor da mensalidade</label><div style={{fontSize:13,fontWeight:600}}>{form.referenciaValor ? fmtMoney(form.referenciaValor) : (view.referencia ? fmtMoney(view.referencia.valor) : '—')}</div></div>
@@ -1360,7 +1381,7 @@ function ClienteDetalheModal({ cliente, cobrancas, tarefas, historico, config, u
             {cliente.travaManual ? (
               <>
                 <span className="badge b-o">🔒 travado manualmente</span>
-                <button className="btn btn-s btn-xs" onClick={()=>destravarAutomatico(cliente, usuario.nome)}>Devolver ao automático (D-7→D+20)</button>
+                <button className="btn btn-s btn-xs" onClick={()=>destravarAutomatico(cliente, usuario.nome)}>Devolver ao automático (D-7→D+20, com D+2/D+5)</button>
               </>
             ) : (
               <span className="badge b-g">🤖 seguindo o fluxo automático por data</span>
@@ -1386,7 +1407,7 @@ function ClienteDetalheModal({ cliente, cobrancas, tarefas, historico, config, u
    CLIENTES — cadastro (item 17) + importação CSV (item 18).
    =================================================================== */
 function ClienteFormModal({ cliente, config, onClose, onSalvar }){
-  const [form, setForm] = useState(cliente || { nome:'', codigo:'', carteira:'', tipoCobranca:'MENSALIDADE', observacoes:'' });
+  const [form, setForm] = useState(cliente || { nome:'', codigo:'', carteira:'', tipoCobranca:'MENSALIDADE', observacoes:'', linkChatguru:'' });
   const [salvando, setSalvando] = useState(false);
   async function salvarClique(){
     if (salvando) return; // trava contra clique duplo (criava cliente/cobrança duplicada)
@@ -1413,6 +1434,7 @@ function ClienteFormModal({ cliente, config, onClose, onSalvar }){
             </select>
           </div>
         </div>
+        <div className="fg"><label className="fl">Link da conversa no ChatGuru</label><input className="fi" placeholder="https://..." value={form.linkChatguru||''} onChange={e=>setForm({...form,linkChatguru:e.target.value})} /></div>
         <div className="fg"><label className="fl">Observações</label><textarea className="fi" value={form.observacoes||''} onChange={e=>setForm({...form,observacoes:e.target.value})} /></div>
       </div>
     </Modal>
@@ -2240,9 +2262,10 @@ function ManualView(){
           <h2>CRM (Kanban)</h2>
           <p className="man-sub">O coração do sistema: onde cada cliente atrasado aparece e avança sozinho.</p>
           <h3>Como funciona o funil</h3>
-          <p>Cada cliente com uma cobrança vencida (ou perto de vencer) aparece como um <b>cartão</b>, numa das colunas: D-7, D-1, D0, D+1, D+7, D+10, D+15, D+20, Rescisão, Notificação, Jurídico. O nome da coluna é a quantidade de dias antes/depois do vencimento.</p>
+          <p>Cada cliente com uma cobrança vencida (ou perto de vencer) aparece como um <b>cartão</b>, numa das colunas: D-7, D-1, D0, D+1, D+2, D+5, D+7, D+10, D+15, D+20, Rescisão, Notificação, Jurídico. O nome da coluna é a quantidade de dias antes/depois do vencimento.</p>
           <div className="man-step"><b>O cliente muda de coluna sozinho</b>, conforme os dias passam — ninguém precisa arrastar nada no dia a dia. O sistema confere isso automaticamente quando alguém abre o Kanban, e também dá pra forçar clicando em <span className="man-kbd">🔄 Sincronizar etapas com a data de hoje</span>.</div>
           <p>Quando o cliente paga a cobrança em aberto, ele some das colunas de atraso e aparece na área <b>"Regularizados"</b>, embaixo do quadro.</p>
+          <p>O responsável padrão de cada etapa aparece direto no <b>topo da coluna</b>, além de dentro de cada cartão. Do D-1 ao D+1 é o Financeiro, D-7/D+2/D+5 são do Líder, e de D+7 em diante (inclusive Notificação e Rescisão) é da Duda.</p>
           <h3>Mexendo manualmente</h3>
           <p>Dá pra arrastar um cartão pra outra coluna, ou abrir o cliente e trocar a etapa no seletor "Etapa do funil". Quando você faz isso na mão, o cliente fica <b>🔒 travado manualmente</b> — o sistema para de mover ele sozinho, pra não brigar com a sua decisão. Pra devolver ao automático, é só clicar em "Devolver ao automático" na ficha do cliente.</p>
           <div className="man-tip">💡 Use a trava manual pra casos especiais: cliente negociando, caso jurídico específico, etc. Pro dia a dia normal, deixe no automático.</div>
@@ -2271,6 +2294,7 @@ function ManualView(){
             <li>Salvar</li>
           </ol>
           <p>Depois de criado, abra o cliente pra configurar a mensalidade dele — isso fica dentro da ficha, na aba <b>Cobrança</b> (veja a seção "Cobranças" abaixo).</p>
+          <p>Na aba <b>Informações</b> da ficha (ou já no cadastro) dá pra colar o <b>link da conversa no ChatGuru</b> daquele cliente. Uma vez salvo, o link aparece clicável tanto na ficha quanto no próprio cartão do Kanban, abrindo a conversa direto.</p>
           <h3>Importar vários clientes de uma vez (CSV)</h3>
           <ol>
             <li>Clique em <b>Importar CSV</b></li>
